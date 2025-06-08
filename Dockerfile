@@ -1,34 +1,31 @@
-FROM ubuntu:18.04
-MAINTAINER Bluesoft Fire <devops@bluesoft.com.br>
+FROM python:2.7-slim
 
-ENV DEBIAN_FRONTEND noninteractive
+# Instalar dependências do sistema
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libz-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    libyaml-dev \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get -y update && \
-    apt-get -y install \
-        gcc \
-        python2.7 \
-        python2.7-dev \
-        python-pip \
-        libz-dev \
-        libxml2-dev \
-        libxslt1-dev \
-        libyaml-dev \
-        libpython2.7-dev
-
-# Versões específicas para compatibilidade com Python 2.7
+# Atualizar pip e ferramentas
 RUN pip install --upgrade pip==20.3.4
 RUN pip install setuptools==44.1.1 wheel==0.37.1
 
-ENV APP_DIR /srv/postmon
-
-RUN mkdir -p $APP_DIR
+ENV APP_DIR=/srv/postmon
 WORKDIR $APP_DIR
 
+# Copiar e instalar dependências
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copiar código da aplicação
 COPY . .
 
 EXPOSE 9876
 
-ENTRYPOINT ["python2.7", "PostmonServer.py"]
+ENTRYPOINT ["python", "PostmonServer.py"]
