@@ -9,7 +9,7 @@ import pymongo
 from utils import slug
 
 
-class MongoDb(object):
+class MongoDB(object):
 
     _fields = [
         'logradouro',
@@ -35,7 +35,23 @@ class MongoDb(object):
     def create_indexes(self):
         self._db.ceps.ensure_index('cep')
 
+    def _fix_kwargs(self, kwargs):
+        """Fix kwargs for different pymongo versions"""
+        if 'fields' in kwargs:
+            # Convert 'fields' to 'projection' for pymongo 3.x+
+            try:
+                # Test if pymongo supports projection parameter
+                import inspect
+                find_signature = inspect.getargspec(self._db.ceps.find)
+                if 'projection' in find_signature.args:
+                    kwargs['projection'] = kwargs.pop('fields')
+            except:
+                # If inspection fails, try the old way
+                pass
+        return kwargs
+
     def get_one(self, cep, **kwargs):
+        kwargs = self._fix_kwargs(kwargs)
         r = self._db.ceps.find_one({'cep': cep}, **kwargs)
         if r and u'endereço' in r and 'endereco' not in r:
             # Garante que o cache também tem a key `endereco`. #92
@@ -44,6 +60,7 @@ class MongoDb(object):
         return r
 
     def get_one_uf(self, sigla, **kwargs):
+        kwargs = self._fix_kwargs(kwargs)
         return self._db.ufs.find_one({'sigla': sigla}, **kwargs)
 
     def get_one_cidade(self, sigla_uf, nome_cidade, **kwargs):
@@ -60,9 +77,12 @@ class MongoDb(object):
                     sigla_uf, nome_cidade_alternativa)
             }
             spec = {'$or': [spec, spec_alternativa]}
+        
+        kwargs = self._fix_kwargs(kwargs)
         return self._db.cidades.find_one(spec, **kwargs)
 
     def get_one_uf_by_nome(self, nome, **kwargs):
+        kwargs = self._fix_kwargs(kwargs)
         return self._db.ufs.find_one({'nome': nome}, **kwargs)
 
     def insert_or_update(self, obj, **kwargs):

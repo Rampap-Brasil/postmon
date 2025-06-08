@@ -1,38 +1,14 @@
-# Web Framework
 bottle==0.12.20
 bottle-healthcheck==0.2.1
-
-# HTML/XML Parsing
 cssselect==1.0.3
 beautifulsoup4==4.9.3
-lxml==4.6.5
-
-# Database
 pymongo==3.12.3
-
-# Tracking & Utilities  
 packtrack==1.6
-xmltodict==0.12.0
-
-# Development
-flake8==3.9.2
-
-# Task Queue
-celery==4.4.7
-kombu==4.6.11
-
-# Configuration
-PyYAML==5.4.1
-
-# HTTP Requests
+xmltodict
+flake8
+celery[mongodb]<4.0
+PyYAML==5.4
 requests==2.27.1
-
-# Monitoring (versão compatível com Python 2.7)
-raven==6.10.0
-
-# New Relic
-newrelic==5.24.0.153
-
-# Text Processing
-Unidecode==1.2.0
-unicode-slugify==0.1.3
+raven==5.11.1
+newrelic==2.66.0.49
+unicode_slugify==0.1.3
