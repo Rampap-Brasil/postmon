@@ -12,6 +12,8 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
+        networks:
+            - postmon_network
 
     postmon:
         build: .
@@ -28,6 +30,12 @@ services:
             - POSTMON_DB_NAME=postmon
         volumes:
             - ./data:/srv/postmon/data
+        networks:
+            - postmon_network
 
 volumes:
     mongodb_data:
+
+networks:
+    postmon_network:
+        driver: bridge
