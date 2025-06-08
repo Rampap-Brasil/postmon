@@ -38,16 +38,21 @@ class MongoDB(object):
     def _fix_kwargs(self, kwargs):
         """Fix kwargs for different pymongo versions"""
         if 'fields' in kwargs:
-            # Convert 'fields' to 'projection' for pymongo 3.x+
+            # For pymongo 3.x+, use 'projection' instead of 'fields'
             try:
-                # Test if pymongo supports projection parameter
-                import inspect
-                find_signature = inspect.getargspec(self._db.ceps.find)
-                if 'projection' in find_signature.args:
+                # Simple version check based on pymongo version
+                pymongo_version = tuple(map(int, pymongo.version.split('.')))
+                if pymongo_version >= (3, 0, 0):
                     kwargs['projection'] = kwargs.pop('fields')
             except:
-                # If inspection fails, try the old way
-                pass
+                # If version check fails, try to detect by attempting to use projection
+                try:
+                    # Test call with projection to see if it's supported
+                    self._db.ceps.find_one({}, projection={'_id': 1})
+                    kwargs['projection'] = kwargs.pop('fields')
+                except:
+                    # Keep fields if projection is not supported
+                    pass
         return kwargs
 
     def get_one(self, cep, **kwargs):
