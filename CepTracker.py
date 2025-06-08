@@ -40,27 +40,48 @@ class CepTracker(object):
 
         found = False
         now = datetime.now()
+        
+        logger.info("Resposta da API dos Correios: %s", data)
 
-        for item in data["dados"]:
-            if item['cep'] == cep:
+        # Verificar diferentes formatos de resposta
+        items = []
+        if "dados" in data:
+            items = data["dados"]
+        elif isinstance(data, list):
+            items = data
+        elif isinstance(data, dict):
+            # Se a resposta é um dict com dados do CEP diretamente
+            if 'cep' in data or 'logradouro' in data:
+                items = [data]
+            # Tentar outras chaves possíveis
+            elif 'enderecos' in data:
+                items = data['enderecos']
+            elif 'resultado' in data:
+                items = data['resultado']
+
+        for item in items:
+            if item.get('cep') == cep or item.get('cep') == cep.replace('-', ''):
                 found = True
 
-            data = {
+            # Adaptar para diferentes formatos de resposta
+            result_data = {
                 "_meta": {
                     "v_date": now,
                 },
-                "cep": item['cep'],
-                "bairro": item['bairro'],
-                "cidade": item['localidade'],
-                "estado": item['uf'],
+                "cep": item.get('cep', cep),
+                "bairro": item.get('bairro', item.get('distrito', '')),
+                "cidade": item.get('localidade', item.get('cidade', '')),
+                "estado": item.get('uf', item.get('estado', '')),
             }
-            logradouro = item["logradouroDNEC"]
+            
+            # Logradouro pode vir em diferentes formatos
+            logradouro = item.get('logradouroDNEC', item.get('logradouro', ''))
             if ' - ' in logradouro:
                 logradouro, complemento = logradouro.split(' - ', 1)
-                data['complemento'] = complemento.strip(' -')
-            data['logradouro'] = logradouro
+                result_data['complemento'] = complemento.strip(' -')
+            result_data['logradouro'] = logradouro
 
-            result.append(data)
+            result.append(result_data)
 
         if not found:
             result.append({
