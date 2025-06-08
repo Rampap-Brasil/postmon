@@ -3,11 +3,15 @@ services:
         image: mongo:4.4
         container_name: postmon_mongodb
         restart: unless-stopped
-        # Porta removida - acesso apenas interno
         volumes:
             - mongodb_data:/data/db
         environment:
             MONGO_INITDB_DATABASE: postmon
+        healthcheck:
+            test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
 
     postmon:
         build: .
@@ -16,10 +20,12 @@ services:
         ports:
             - "9876:9876"
         depends_on:
-            - mongodb
+            mongodb:
+                condition: service_healthy
         environment:
-            - MONGODB_HOST=mongodb
-            - MONGODB_PORT=27017
+            - POSTMON_DB_HOST=mongodb
+            - POSTMON_DB_PORT=27017
+            - POSTMON_DB_NAME=postmon
         volumes:
             - ./data:/srv/postmon/data
 
