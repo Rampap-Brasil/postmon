@@ -10,15 +10,13 @@ RUN apt-get -y update -qq&& \
         libz-dev \
         libxml2-dev \
         libxslt1-dev \
-        mongodb \
         python2.7 \
         python2.7-dev \
         libyaml-dev \
-	libpython2.7-dev \
-	python-pip
+    libpython2.7-dev \
+    python-pip
 
 RUN pip install --upgrade pip==18.0
-
 RUN pip install setuptools wheel
 
 ENV APP_DIR /srv/postmon
@@ -28,13 +26,8 @@ ADD . $APP_DIR
 WORKDIR $APP_DIR
 
 RUN pip install -r requirements.txt
-RUN mkdir -p data/db
 
 EXPOSE 9876
 
-ENTRYPOINT mongod \
-                --fork \
-                --logpath /tmp/mongo.log \
-                --dbpath data/db && \
-           python PostmonServer.py
+ENTRYPOINT python PostmonServer.py
 

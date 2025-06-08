@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+    mongodb:
+        image: mongo:4.4
+        container_name: postmon_mongodb
+        restart: unless-stopped
+        ports:
+            - "27017:27017"
+        volumes:
+            - mongodb_data:/data/db
+        environment:
+            MONGO_INITDB_DATABASE: postmon
+
+    postmon:
+        build: .
+        container_name: postmon_app
+        restart: unless-stopped
+        ports:
+            - "9876:9876"
+        depends_on:
+            - mongodb
+        environment:
+            - MONGODB_HOST=mongodb
+            - MONGODB_PORT=27017
+        volumes:
+            - ./data:/srv/postmon/data
+
+volumes:
+    mongodb_data:
