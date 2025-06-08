@@ -1,12 +1,9 @@
-version: "3.8"
-
 services:
     mongodb:
         image: mongo:4.4
         container_name: postmon_mongodb
         restart: unless-stopped
-        ports:
-            - "27017:27017"
+        # Porta removida - acesso apenas interno
         volumes:
             - mongodb_data:/data/db
         environment:
