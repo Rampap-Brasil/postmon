@@ -12,78 +12,47 @@ _notfound_key = '__notfound__'
 
 
 class CepTracker(object):
+    # Usar ViaCEP como alternativa gratuita e confiável
     url = os.getenv(
         "CORREIOS_CEP_URL",
-        "https://buscacepinter.correios.com.br/app/endereco/carrega-cep-endereco.php",  # NOQA
+        "https://viacep.com.br/ws/{}/json/",  # ViaCEP API
     )
 
     def _request(self, cep):
-        response = requests.post(self.url, data={
-            "pagina": "/app/endereco/index.php",
-            "cepaux": "",
-            "mensagem_alerta": "",
-            "endereco": cep,
-            "tipoCEP": "ALL",
-        }, headers={
-            "Referer": "https://buscacepinter.correios.com.br/app/endereco/index.php?t",
-        }, timeout=10)
+        # Limpar CEP (remover hífen)
+        clean_cep = cep.replace('-', '').replace('.', '')
+        
+        # Usar ViaCEP
+        url = self.url.format(clean_cep)
+        
+        response = requests.get(url, timeout=10)
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as ex:
-            logger.exception('Erro no site dos Correios')
+            logger.exception('Erro na API de CEP')
             raise ex
         return response.json()
 
     def track(self, cep):
-        data = self._request(cep)
+        try:
+            data = self._request(cep)
+        except Exception as ex:
+            logger.exception('Erro ao consultar CEP: %s', cep)
+            return [{
+                'cep': cep,
+                '_meta': {
+                    "v_date": datetime.now(),
+                    _notfound_key: True,
+                },
+            }]
+        
         result = []
-
-        found = False
         now = datetime.now()
         
-        logger.info("Resposta da API dos Correios: %s", data)
+        logger.info("Resposta da API de CEP: %s", data)
 
-        # Verificar diferentes formatos de resposta
-        items = []
-        if "dados" in data:
-            items = data["dados"]
-        elif isinstance(data, list):
-            items = data
-        elif isinstance(data, dict):
-            # Se a resposta é um dict com dados do CEP diretamente
-            if 'cep' in data or 'logradouro' in data:
-                items = [data]
-            # Tentar outras chaves possíveis
-            elif 'enderecos' in data:
-                items = data['enderecos']
-            elif 'resultado' in data:
-                items = data['resultado']
-
-        for item in items:
-            if item.get('cep') == cep or item.get('cep') == cep.replace('-', ''):
-                found = True
-
-            # Adaptar para diferentes formatos de resposta
-            result_data = {
-                "_meta": {
-                    "v_date": now,
-                },
-                "cep": item.get('cep', cep),
-                "bairro": item.get('bairro', item.get('distrito', '')),
-                "cidade": item.get('localidade', item.get('cidade', '')),
-                "estado": item.get('uf', item.get('estado', '')),
-            }
-            
-            # Logradouro pode vir em diferentes formatos
-            logradouro = item.get('logradouroDNEC', item.get('logradouro', ''))
-            if ' - ' in logradouro:
-                logradouro, complemento = logradouro.split(' - ', 1)
-                result_data['complemento'] = complemento.strip(' -')
-            result_data['logradouro'] = logradouro
-
-            result.append(result_data)
-
-        if not found:
+        # ViaCEP retorna erro se CEP não encontrado
+        if data.get('erro'):
             result.append({
                 'cep': cep,
                 '_meta': {
@@ -91,4 +60,23 @@ class CepTracker(object):
                     _notfound_key: True,
                 },
             })
+        else:
+            # Converter formato ViaCEP para formato Postmon
+            result_data = {
+                "_meta": {
+                    "v_date": now,
+                },
+                "cep": data.get('cep', cep).replace('-', ''),
+                "logradouro": data.get('logradouro', ''),
+                "bairro": data.get('bairro', ''),
+                "cidade": data.get('localidade', ''),
+                "estado": data.get('uf', ''),
+            }
+            
+            # Complemento do ViaCEP
+            if data.get('complemento'):
+                result_data['complemento'] = data.get('complemento')
+                
+            result.append(result_data)
+
         return result
