@@ -69,6 +69,7 @@ def _get_info_from_source(cep):
 
 
 def format_result(result):
+    logger.info("=== FORMAT_RESULT chamado com: %s ===", result)
     # checa se foi solicitada resposta em JSONP
     js_func_name = bottle.request.query.get(jsonp_query_key)
 
@@ -89,6 +90,7 @@ def format_result(result):
 
 
 def make_error(message, output_format=None):
+    logger.info("=== MAKE_ERROR chamado: %s ===", message)
     formats = {
         'json': 'application/json',
         'xml': 'application/xml',
@@ -121,34 +123,53 @@ def _get_cidade_info(db, sigla_uf, nome_cidade):
 @app_v1.route('/cep/<cep:re:[0-9]{5}-?[0-9]{3}>')
 def verifica_cep(cep):
     logger.info("=== ROTA CEP CHAMADA: %s ===", cep)
-    cep = cep.replace('-', '')
+    cep_limpo = cep.replace('-', '')
+    logger.info("CEP limpo: %s", cep_limpo)
+    
     db = Database()
     response.headers['Access-Control-Allow-Origin'] = '*'
     message = None
-    result = db.get_one(cep, fields={'_id': False})
+    
+    logger.info("Consultando cache no MongoDB...")
+    result = db.get_one(cep_limpo, fields={'_id': False})
+    logger.info("Resultado do cache: %s", result)
+    
     if not result or expired(result):
+        logger.info("Cache vazio ou expirado, consultando fonte externa...")
         result = None
         try:
-            info = _get_info_from_source(cep)
-        except requests.exceptions.RequestException:
+            info = _get_info_from_source(cep_limpo)
+            logger.info("Info recebida da fonte: %s", info)
+        except requests.exceptions.RequestException as ex:
             message = '503 Servico Temporariamente Indisponivel'
             logger.exception(message)
             return make_error(message)
+        except Exception as ex:
+            message = '500 Erro interno'
+            logger.exception("Erro geral: %s", ex)
+            return make_error(message)
         else:
+            logger.info("Salvando dados no MongoDB...")
             for item in info:
+                logger.info("Salvando item: %s", item)
                 db.insert_or_update(item)
-            result = db.get_one(cep, fields={
+            result = db.get_one(cep_limpo, fields={
                 '_id': False, 'v_date': False})
+            logger.info("Resultado após salvar: %s", result)
 
     if result:
         notfound = _notfound(result)
+        logger.info("Resultado encontrado, notfound=%s", notfound)
     else:
         notfound = True
+        logger.info("Nenhum resultado encontrado")
 
     if notfound:
-        message = '404 CEP %s nao encontrado' % cep
+        message = '404 CEP %s nao encontrado' % cep_limpo
+        logger.info("Retornando erro: %s", message)
         return make_error(message)
 
+    logger.info("Processando resultado final...")
     result.pop('v_date', None)
     result.pop('_meta', None)
 
@@ -161,6 +182,8 @@ def verifica_cep(cep):
     cidade_info = _get_cidade_info(db, sigla_uf, nome_cidade)
     if cidade_info:
         result['cidade_info'] = cidade_info
+    
+    logger.info("Retornando resultado final: %s", result)
     return format_result(result)
 
 
