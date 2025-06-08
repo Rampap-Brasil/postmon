@@ -5,7 +5,7 @@ import os
 import packtrack
 import requests
 
-from database import MongoDb as Database
+from database import MongoDB as Database
 
 
 def correios(track, backend=None, auth=None):
