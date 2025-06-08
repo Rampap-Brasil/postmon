@@ -63,6 +63,7 @@ def expired(record_date):
 
 
 def _get_info_from_source(cep):
+    logger.info("=== CHAMANDO CepTracker.track para CEP: %s ===", cep)
     tracker = CepTracker()
     return tracker.track(cep)
 
@@ -115,9 +116,11 @@ def _get_cidade_info(db, sigla_uf, nome_cidade):
     return db.get_one_cidade(sigla_uf, nome_cidade, fields=fields)
 
 
-@app.route('/cep/<cep:re:'r'\d{5}-?'r'\d{3}>')
-@app_v1.route('/cep/<cep:re:'r'\d{5}-?'r'\d{3}>')
+# REGEX CORRIGIDO - Aceita CEP com ou sem hífen, mais flexível
+@app.route('/cep/<cep:re:[0-9]{5}-?[0-9]{3}>')
+@app_v1.route('/cep/<cep:re:[0-9]{5}-?[0-9]{3}>')
 def verifica_cep(cep):
+    logger.info("=== ROTA CEP CHAMADA: %s ===", cep)
     cep = cep.replace('-', '')
     db = Database()
     response.headers['Access-Control-Allow-Origin'] = '*'
