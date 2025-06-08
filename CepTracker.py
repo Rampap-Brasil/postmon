@@ -15,41 +15,135 @@ logging.basicConfig(level=logging.INFO)
 
 
 class CepTracker(object):
-    # Usar ViaCEP como alternativa gratuita e confiável
-    url = os.getenv(
-        "CORREIOS_CEP_URL",
-        "https://viacep.com.br/ws/{}/json/",  # ViaCEP API
-    )
+    # APIs alternativas para consulta de CEP
+    apis = [
+        {
+            'name': 'ViaCEP',
+            'url': 'https://viacep.com.br/ws/{}/json/',
+            'timeout': 10
+        },
+        {
+            'name': 'PostalPinCode',
+            'url': 'https://api.postalpincode.in/pincode/{}',
+            'timeout': 10
+        },
+        {
+            'name': 'CEP.la',
+            'url': 'https://cep.la/{}',
+            'timeout': 10
+        }
+    ]
+
+    def _request_viacep(self, cep):
+        """Consultar ViaCEP"""
+        clean_cep = cep.replace('-', '').replace('.', '')
+        url = 'https://viacep.com.br/ws/{}/json/'.format(clean_cep)
+        
+        logger.info("Tentando ViaCEP: %s", url)
+        
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()
+
+    def _request_brasilapi(self, cep):
+        """Consultar BrasilAPI como alternativa"""
+        clean_cep = cep.replace('-', '').replace('.', '')
+        url = 'https://brasilapi.com.br/api/cep/v1/{}'.format(clean_cep)
+        
+        logger.info("Tentando BrasilAPI: %s", url)
+        
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Converter formato BrasilAPI para ViaCEP
+        return {
+            'cep': data.get('cep', ''),
+            'logradouro': data.get('street', ''),
+            'complemento': '',
+            'bairro': data.get('district', ''),
+            'localidade': data.get('city', ''),
+            'uf': data.get('state', ''),
+            'ibge': data.get('city_ibge', '')
+        }
+
+    def _request_cepaberto(self, cep):
+        """Consultar CEP Aberto como alternativa"""
+        clean_cep = cep.replace('-', '').replace('.', '')
+        url = 'https://www.cepaberto.com/api/v3/cep?cep={}'.format(clean_cep)
+        
+        logger.info("Tentando CEP Aberto: %s", url)
+        
+        headers = {
+            'Authorization': 'Token token=',  # Precisaria de token
+            'User-Agent': 'Postmon/1.0'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Converter formato CEP Aberto para ViaCEP
+        return {
+            'cep': data.get('cep', ''),
+            'logradouro': data.get('address', ''),
+            'complemento': '',
+            'bairro': data.get('district', ''),
+            'localidade': data.get('city', {}).get('name', ''),
+            'uf': data.get('state', {}).get('code', ''),
+        }
 
     def _request(self, cep):
-        # Limpar CEP (remover hífen)
         clean_cep = cep.replace('-', '').replace('.', '')
         
         logger.info("=== DEBUG CepTracker ===")
         logger.info("CEP original: %s", cep)
         logger.info("CEP limpo: %s", clean_cep)
         
-        # Usar ViaCEP
-        url = self.url.format(clean_cep)
-        logger.info("URL da requisição: %s", url)
+        # Lista de métodos para tentar em ordem
+        methods = [
+            ('ViaCEP', self._request_viacep),
+            ('BrasilAPI', self._request_brasilapi),
+            # ('CEPAberto', self._request_cepaberto),  # Desabilitado - precisa token
+        ]
         
-        try:
-            response = requests.get(url, timeout=10)
-            logger.info("Status da resposta: %s", response.status_code)
-            logger.info("Conteúdo da resposta: %s", response.text)
-            
-            response.raise_for_status()
-            return response.json()
-            
-        except requests.exceptions.HTTPError as ex:
-            logger.error('Erro HTTP na API de CEP: %s', ex)
-            raise ex
-        except requests.exceptions.RequestException as ex:
-            logger.error('Erro de conexão na API de CEP: %s', ex)
-            raise ex
-        except Exception as ex:
-            logger.error('Erro geral na API de CEP: %s', ex)
-            raise ex
+        last_error = None
+        
+        for api_name, method in methods:
+            try:
+                logger.info("Tentando API: %s", api_name)
+                data = method(clean_cep)
+                logger.info("Sucesso com %s: %s", api_name, data)
+                return data
+                
+            except requests.exceptions.ConnectTimeout as ex:
+                last_error = ex
+                logger.error('Timeout na API %s: %s', api_name, ex)
+                continue
+                
+            except requests.exceptions.ConnectionError as ex:
+                last_error = ex
+                logger.error('Erro de conexão na API %s: %s', api_name, ex)
+                continue
+                
+            except requests.exceptions.HTTPError as ex:
+                last_error = ex
+                logger.error('Erro HTTP na API %s: %s', api_name, ex)
+                continue
+                
+            except requests.exceptions.RequestException as ex:
+                last_error = ex
+                logger.error('Erro de requisição na API %s: %s', api_name, ex)
+                continue
+                
+            except Exception as ex:
+                last_error = ex
+                logger.error('Erro geral na API %s: %s', api_name, ex)
+                continue
+        
+        # Se todas as APIs falharam, relançar último erro
+        logger.error('Todas as APIs falharam. Último erro: %s', last_error)
+        raise last_error
 
     def track(self, cep):
         logger.info("=== INICIANDO TRACK CEP: %s ===", cep)
@@ -71,8 +165,8 @@ class CepTracker(object):
         result = []
         now = datetime.now()
 
-        # ViaCEP retorna erro se CEP não encontrado
-        if data.get('erro'):
+        # Verificar se API retornou erro
+        if data.get('erro') or not data.get('localidade'):
             logger.info("CEP não encontrado na API")
             result.append({
                 'cep': cep,
@@ -83,7 +177,7 @@ class CepTracker(object):
             })
         else:
             logger.info("CEP encontrado, processando dados")
-            # Converter formato ViaCEP para formato Postmon
+            # Converter formato da API para formato Postmon
             result_data = {
                 "_meta": {
                     "v_date": now,
@@ -95,7 +189,7 @@ class CepTracker(object):
                 "estado": data.get('uf', ''),
             }
             
-            # Complemento do ViaCEP
+            # Complemento da API
             if data.get('complemento'):
                 result_data['complemento'] = data.get('complemento')
                 
