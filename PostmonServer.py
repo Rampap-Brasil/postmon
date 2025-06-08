@@ -52,14 +52,17 @@ def expired(record_date):
         return True
 
     if _notfound(record_date):
-        # 1 week
-        WEEKS = 1
+        # Para registros "not found", expirar em 1 hora para tentar novamente
+        HOURS = 1
+        now = datetime.now()
+        is_expired = (now - v_date >= timedelta(hours=HOURS))
+        logger.info("Registro notfound, idade: %s, expirou: %s", now - v_date, is_expired)
+        return is_expired
     else:
-        # 6 months
+        # Para registros válidos, manter 6 meses
         WEEKS = 26
-
-    now = datetime.now()
-    return (now - v_date >= timedelta(weeks=WEEKS))
+        now = datetime.now()
+        return (now - v_date >= timedelta(weeks=WEEKS))
 
 
 def _get_info_from_source(cep):
