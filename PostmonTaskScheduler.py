@@ -5,7 +5,7 @@ from celery import Celery
 from celery.utils.log import get_task_logger
 from IbgeTracker import IbgeTracker
 import PackTracker
-from database import MongoDb as Database
+from database import MongoDB as Database
 import os
 
 USERNAME = os.environ.get('POSTMON_DB_USER')

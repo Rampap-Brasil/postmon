@@ -14,7 +14,7 @@ from raven.contrib.bottle import Sentry
 from CepTracker import CepTracker, _notfound_key
 import PackTracker
 import requests
-from database import MongoDb as Database
+from database import MongoDB as Database
 from utils import EnableCORS
 
 logger = logging.getLogger(__name__)

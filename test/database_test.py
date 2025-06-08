@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 import unittest
 
-from database import MongoDb
+from database import MongoDB
 
 
 class MongoDbTest(unittest.TestCase):
 
     def setUp(self):
-        self.db = MongoDb()
+        self.db = MongoDB()
 
         self.db.insert_or_update({
             'cep': 'UNIQUE_KEY',
@@ -49,7 +49,7 @@ class UFTest(unittest.TestCase):
     }
 
     def setUp(self):
-        self.db = MongoDb()
+        self.db = MongoDB()
         self.db.insert_or_update_uf(self.uf_sp)
 
     def tearDown(self):
@@ -78,7 +78,7 @@ class CidadeTest(unittest.TestCase):
     }
 
     def setUp(self):
-        self.db = MongoDb()
+        self.db = MongoDB()
         self.db.insert_or_update_cidade(self.cidade_sp)
 
     def tearDown(self):

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import requests
 
-from database import MongoDb as Database
+from database import MongoDB as Database
 from utils import slug
 
 
