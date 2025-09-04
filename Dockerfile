@@ -1,5 +1,10 @@
 FROM python:2.7-slim-stretch
 
+# Configurar repositórios de arquivo para Debian Stretch
+RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    sed -i '/stretch-updates/d' /etc/apt/sources.list
+
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
     gcc \
