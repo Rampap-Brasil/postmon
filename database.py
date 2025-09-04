@@ -166,7 +166,7 @@ class MongoDB(object):
             'count': result.deleted_count,
             'ceps': affected_ceps,
             'deleted': True,
-            'message': f'Successfully deleted {result.deleted_count} records'
+            'message': 'Successfully deleted {} records'.format(result.deleted_count)
         }
 
 
