@@ -72,6 +72,7 @@ Required for MongoDB authentication:
 - pymongo: MongoDB driver
 - celery: Background task queue
 - requests: HTTP client for external APIs
+- packtrack: Package tracking (requires Python 2.7)
 - flake8: Code linting
 - nose: Testing framework
 
@@ -83,3 +84,31 @@ Required for MongoDB authentication:
 - `/__health__`: Health check endpoint
 
 The CEP lookup implements intelligent fallback between ViaCEP and BrasilAPI, with MongoDB caching and detailed logging for debugging connectivity issues.
+
+## Docker Configuration Notes
+
+**IMPORTANT**: This application requires Python 2.7 due to the `packtrack` dependency which relies on BeautifulSoup 3 (incompatible with Python 3).
+
+### Dockerfile Configuration
+The Dockerfile is configured for Python 2.7 with Debian Stretch using archived repositories:
+```dockerfile
+FROM python:2.7-slim-stretch
+
+# Configure archived repositories for Debian Stretch (EOL)
+RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    sed -i '/stretch-updates/d' /etc/apt/sources.list
+```
+
+### Migration Considerations
+- **Current**: Python 2.7 + packtrack (full functionality)
+- **Future**: To migrate to Python 3, the packtrack dependency needs replacement:
+  - Option 1: Find Python 3 compatible package tracking library
+  - Option 2: Implement custom tracking using modern HTTP clients
+  - Option 3: Remove package tracking functionality
+
+### Build Troubleshooting
+If Docker build fails with repository errors:
+1. Ensure using `python:2.7-slim-stretch` base image
+2. Repository configuration points to `archive.debian.org`
+3. Stretch-updates repositories are disabled (they don't exist in archives)
