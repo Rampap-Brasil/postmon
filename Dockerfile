@@ -1,4 +1,4 @@
-FROM python:2.7-slim
+FROM python:3.8-slim
 
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Atualizar pip e ferramentas
-RUN pip install --upgrade pip==20.3.4
-RUN pip install setuptools==44.1.1 wheel==0.37.1
+RUN pip install --upgrade pip
+RUN pip install setuptools wheel
 
 ENV APP_DIR=/srv/postmon
 WORKDIR $APP_DIR
