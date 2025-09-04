@@ -111,6 +111,64 @@ class MongoDB(object):
     def remove(self, cep):
         self._db.ceps.remove({'cep': cep})
 
+    def find_empty_bairro_records(self):
+        """Find all CEP records with empty or missing bairro field"""
+        # Query for records where bairro is empty string, null, or missing
+        # and exclude records marked as notfound
+        query = {
+            '$or': [
+                {'bairro': ''},
+                {'bairro': None},
+                {'bairro': {'$exists': False}}
+            ],
+            '_meta.__notfound__': {'$exists': False}
+        }
+        return list(self._db.ceps.find(query))
+
+    def cleanup_empty_bairro_records(self, dry_run=True):
+        """Remove CEP records with empty bairro field
+        
+        Args:
+            dry_run (bool): If True, only shows what would be deleted without actually deleting
+            
+        Returns:
+            dict: Summary of operation with count and CEPs affected
+        """
+        # Find records with empty bairro
+        records = self.find_empty_bairro_records()
+        
+        if not records:
+            return {'count': 0, 'ceps': [], 'deleted': False}
+        
+        affected_ceps = [record.get('cep', 'unknown') for record in records]
+        
+        if dry_run:
+            return {
+                'count': len(records),
+                'ceps': affected_ceps,
+                'deleted': False,
+                'message': 'DRY RUN: These records would be deleted'
+            }
+        
+        # Actually delete the records
+        query = {
+            '$or': [
+                {'bairro': ''},
+                {'bairro': None},
+                {'bairro': {'$exists': False}}
+            ],
+            '_meta.__notfound__': {'$exists': False}
+        }
+        
+        result = self._db.ceps.delete_many(query)
+        
+        return {
+            'count': result.deleted_count,
+            'ceps': affected_ceps,
+            'deleted': True,
+            'message': f'Successfully deleted {result.deleted_count} records'
+        }
+
 
 class PackTrack(object):
 

@@ -177,24 +177,37 @@ class CepTracker(object):
             })
         else:
             logger.info("CEP encontrado, processando dados")
-            # Converter formato da API para formato Postmon
-            result_data = {
-                "_meta": {
-                    "v_date": now,
-                },
-                "cep": data.get('cep', cep).replace('-', ''),
-                "logradouro": data.get('logradouro', ''),
-                "bairro": data.get('bairro', ''),
-                "cidade": data.get('localidade', ''),
-                "estado": data.get('uf', ''),
-            }
             
-            # Complemento da API
-            if data.get('complemento'):
-                result_data['complemento'] = data.get('complemento')
+            # Verificar se bairro está vazio ou em branco
+            bairro = data.get('bairro', '').strip()
+            if not bairro:
+                logger.info("CEP com bairro em branco, marcando como not found")
+                result.append({
+                    'cep': cep,
+                    '_meta': {
+                        "v_date": now,
+                        _notfound_key: True,
+                    },
+                })
+            else:
+                # Converter formato da API para formato Postmon
+                result_data = {
+                    "_meta": {
+                        "v_date": now,
+                    },
+                    "cep": data.get('cep', cep).replace('-', ''),
+                    "logradouro": data.get('logradouro', ''),
+                    "bairro": bairro,
+                    "cidade": data.get('localidade', ''),
+                    "estado": data.get('uf', ''),
+                }
                 
-            logger.info("Dados processados: %s", result_data)
-            result.append(result_data)
+                # Complemento da API
+                if data.get('complemento'):
+                    result_data['complemento'] = data.get('complemento')
+                    
+                logger.info("Dados processados: %s", result_data)
+                result.append(result_data)
 
         logger.info("=== RESULTADO FINAL: %s ===", result)
         return result
