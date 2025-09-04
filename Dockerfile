@@ -1,4 +1,4 @@
-FROM python:3.8-slim
+FROM python:2.7-slim-stretch
 
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
