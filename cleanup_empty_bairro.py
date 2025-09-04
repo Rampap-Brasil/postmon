@@ -23,19 +23,19 @@ def main():
         print("MODO DE SIMULAÇÃO: Use --execute para deletar de fato")
         result = db.cleanup_empty_bairro_records(dry_run=True)
     
-    print(f"\nResultado:")
-    print(f"- Registros encontrados: {result['count']}")
-    print(f"- Status: {result['message']}")
+    print("\nResultado:")
+    print("- Registros encontrados: {}".format(result['count']))
+    print("- Status: {}".format(result['message']))
     
     if result['count'] > 0:
-        print(f"\nCEPs afetados:")
+        print("\nCEPs afetados:")
         for cep in result['ceps'][:10]:  # Mostrar apenas os primeiros 10
-            print(f"  - {cep}")
+            print("  - {}".format(cep))
         
         if len(result['ceps']) > 10:
-            print(f"  ... e mais {len(result['ceps']) - 10} CEPs")
+            print("  ... e mais {} CEPs".format(len(result['ceps']) - 10))
     
-    print(f"\nRegistros foram deletados: {'Sim' if result.get('deleted') else 'Não'}")
+    print("\nRegistros foram deletados: {}".format('Sim' if result.get('deleted') else 'Não'))
 
 if __name__ == '__main__':
     main()
