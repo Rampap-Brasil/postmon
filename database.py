@@ -138,7 +138,12 @@ class MongoDB(object):
         records = self.find_empty_bairro_records()
         
         if not records:
-            return {'count': 0, 'ceps': [], 'deleted': False}
+            return {
+                'count': 0, 
+                'ceps': [], 
+                'deleted': False,
+                'message': 'No records with empty bairro found'
+            }
         
         affected_ceps = [record.get('cep', 'unknown') for record in records]
         
