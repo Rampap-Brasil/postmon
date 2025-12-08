@@ -7,12 +7,10 @@ import json
 import logging
 import xmltodict
 from bottle import run, request, response, template, HTTPResponse
-from bottle.ext.healthcheck import HealthCheck
-from raven import Client
-from raven.contrib.bottle import Sentry
+from bottle.ext.healthcheck import HealthCheck  # type: ignore[import-untyped]
+import sentry_sdk
 
 from CepTracker import CepTracker, _notfound_key
-import PackTracker
 import requests
 from database import MongoDB as Database
 from utils import EnableCORS
@@ -20,9 +18,9 @@ from utils import EnableCORS
 logger = logging.getLogger(__name__)
 HealthCheck(bottle, "/__health__")
 
-app = bottle.default_app()
+app: bottle.Bottle = bottle.default_app()
 app.catchall = False
-app_v1 = bottle.Bottle()
+app_v1: bottle.Bottle = bottle.Bottle()
 app_v1.catchall = False
 jsonp_query_key = 'callback'
 
@@ -32,7 +30,7 @@ db.create_indexes()
 
 def validate_format(callback):
     def wrapper(*args, **kwargs):
-        output_format = request.query.format
+        output_format = request.query.format  # type: ignore[union-attr]
         if output_format and output_format not in {'json', 'jsonp', 'xml'}:
             message = "400 Parametro format='%s' invalido." % output_format
             return make_error(message, output_format='json')
@@ -74,10 +72,10 @@ def _get_info_from_source(cep):
 def format_result(result):
     logger.info("=== FORMAT_RESULT chamado com: %s ===", result)
     # checa se foi solicitada resposta em JSONP
-    js_func_name = bottle.request.query.get(jsonp_query_key)
+    js_func_name = bottle.request.query.get(jsonp_query_key)  # type: ignore[union-attr]
 
     # checa se foi solicitado xml
-    format = bottle.request.query.get('format')
+    format = bottle.request.query.get('format')  # type: ignore[union-attr]
     if format == 'xml':
         response.content_type = 'application/xml'
         return xmltodict.unparse({'result': result})
@@ -99,7 +97,7 @@ def make_error(message, output_format=None):
         'xml': 'application/xml',
         'jsonp': 'application/javascript',
     }
-    format_ = output_format or bottle.request.query.get('format', 'json')
+    format_ = output_format or bottle.request.query.get('format', 'json')  # type: ignore[union-attr]
     response = HTTPResponse(status=message, content_type=formats[format_])
     response.headers['Access-Control-Allow-Origin'] = '*'
     return response
@@ -122,8 +120,8 @@ def _get_cidade_info(db, sigla_uf, nome_cidade):
 
 
 # REGEX CORRIGIDO - Aceita CEP com ou sem hifen, mais flexivel
-@app.route('/cep/<cep:re:[0-9]{5}-?[0-9]{3}>')
-@app_v1.route('/cep/<cep:re:[0-9]{5}-?[0-9]{3}>')
+@app.route('/cep/<cep:re:[0-9]{5}-?[0-9]{3}>')  # type: ignore[misc]
+@app_v1.route('/cep/<cep:re:[0-9]{5}-?[0-9]{3}>')  # type: ignore[misc]
 def verifica_cep(cep):
     logger.info("=== ROTA CEP CHAMADA: %s ===", cep)
     cep_limpo = cep.replace('-', '')
@@ -143,13 +141,13 @@ def verifica_cep(cep):
         try:
             info = _get_info_from_source(cep_limpo)
             logger.info("Info recebida da fonte: %s", info)
-        except requests.exceptions.RequestException as ex:
+        except requests.exceptions.RequestException:
             message = '503 Servico Temporariamente Indisponivel'
             logger.exception(message)
             return make_error(message)
-        except Exception as ex:
+        except Exception:
             message = '500 Erro interno'
-            logger.exception("Erro geral: %s", ex)
+            logger.exception("Erro interno ao consultar CEP")
             return make_error(message)
         else:
             logger.info("Salvando dados no MongoDB...")
@@ -172,6 +170,7 @@ def verifica_cep(cep):
         logger.info("Retornando erro: %s", message)
         return make_error(message)
 
+    assert result is not None  # Garantido pelo check acima
     logger.info("Processando resultado final...")
     result.pop('v_date', None)
     result.pop('_meta', None)
@@ -190,7 +189,7 @@ def verifica_cep(cep):
     return format_result(result)
 
 
-@app_v1.route('/uf/<sigla>')
+@app_v1.route('/uf/<sigla>')  # type: ignore[misc]
 def uf(sigla):
     response.headers['Access-Control-Allow-Origin'] = '*'
     db = Database()
@@ -204,11 +203,11 @@ def uf(sigla):
         return make_error(message)
 
 
-@app_v1.route('/cidade/<sigla_uf>/<nome>')
+@app_v1.route('/cidade/<sigla_uf>/<nome>')  # type: ignore[misc]
 def cidade(sigla_uf, nome):
     response.headers['Access-Control-Allow-Origin'] = '*'
     db = Database()
-    result = _get_cidade_info(db, sigla_uf, nome.decode('utf-8'))
+    result = _get_cidade_info(db, sigla_uf, nome)
     if result:
         response.headers['Cache-Control'] = 'public, max-age=2592000'
         return format_result(result)
@@ -218,69 +217,7 @@ def cidade(sigla_uf, nome):
         return make_error(message)
 
 
-@app_v1.route('/rastreio/<provider>/<track>')
-def track_pack(provider, track):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    if provider == 'ect':
-        auth = (
-            request.headers.get('x-correios-usuario'),
-            request.headers.get('x-correios-senha'),
-        )
-        if auth == (None, None):
-            auth = None
-
-        try:
-            historico = PackTracker.correios(track, auth=auth)
-        except (AttributeError, ValueError):
-            message = "404 Pacote %s nao encontrado" % track
-            logger.exception(message)
-        else:
-            return format_result({
-                'servico': provider,
-                'codigo': track,
-                'historico': historico,
-            })
-    else:
-        message = '404 Servico %s nao encontrado' % provider
-        logger.warning(message)
-    return make_error(message)
-
-
-@app_v1.route('/rastreio/<token>')
-def track_pack_token(token):
-    return make_error('404 NOT IMPLEMENTED')
-
-
-@app_v1.route('/rastreio/<provider>/<track>', method='POST')
-def track_pack_register(provider, track):
-    """
-    Registra o rastreamento do pacote. O `callback` eh parametro obrigatorio,
-    qualquer outra informacao passada sera devolvida quando o `callback` for
-    chamado.
-
-    {
-        "callback": "http://httpbin.org/post",
-        "myid": 1,
-        "other": "thing"
-    }
-    """
-    if "callback" not in request.json:
-        message = "400 callback obrigatorio"
-        return make_error(message)
-
-    try:
-        result = PackTracker.register(provider, track, request.json)
-    except (AttributeError, ValueError):
-        message = "400 Falha no registro do %s/%s" % (provider, track)
-        logger.exception(message)
-        return make_error(message)
-    else:
-        return format_result({
-            'token': result,
-        })
-
-
-@app.route('/crossdomain.xml')
+@app.route('/crossdomain.xml')  # type: ignore[misc]
 def crossdomain():
     response.content_type = 'application/xml'
     return template('crossdomain')
@@ -294,9 +231,7 @@ app.mount('/v1', app_v1)
 
 SENTRY_DSN = os.getenv('SENTRY_DSN')
 if SENTRY_DSN:
-    sentry_client = Client(SENTRY_DSN)
-    app = Sentry(app, sentry_client)
-    app_v1 = Sentry(app_v1, sentry_client)
+    sentry_sdk.init(dsn=SENTRY_DSN)
 
 
 def _standalone(port=9876):

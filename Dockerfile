@@ -1,9 +1,4 @@
-FROM python:2.7-slim-stretch
-
-# Configurar repositórios de arquivo para Debian Stretch
-RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
-    sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
-    sed -i '/stretch-updates/d' /etc/apt/sources.list
+FROM python:3.11-slim-bookworm
 
 # Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
@@ -18,8 +13,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Atualizar pip e ferramentas
-RUN pip install --upgrade pip
-RUN pip install setuptools wheel
+RUN pip install --upgrade pip setuptools wheel
 
 ENV APP_DIR=/srv/postmon
 WORKDIR $APP_DIR

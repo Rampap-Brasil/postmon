@@ -4,23 +4,24 @@ from datetime import datetime, timedelta
 import json
 import re
 import unittest
-import mock
+from unittest import mock
 
 import webtest
 import bottle
-from bson.objectid import ObjectId
-from packtrack import correios
 from requests import RequestException
 
 import CepTracker
-import PackTracker
 from PostmonServer import expired, jsonp_query_key
-from database import MongoDb
+from database import MongoDB
 
 bottle.DEBUG = True
 
 
 class PostmonBaseTest(object):
+
+    def assertCep(self, cep):  # type: ignore[empty-body]  # noqa: ARG002
+        """Implementado nas subclasses."""
+        del cep  # usado nas subclasses
 
     expected = {
         '01330000': [{
@@ -140,10 +141,11 @@ class PostmonWebTest(unittest.TestCase, PostmonBaseTest):
         try:
             result = self.get_cep(cep)
         except webtest.AppError as ex:
-            if not expected and '404' in ex.message and cep in ex.message:
+            if not expected and '404' in str(ex) and cep in str(ex):
                 return
             raise ex
 
+        assert expected is not None
         for k, v in expected[0].items():
             self.assertEqual(v, result[k])
 
@@ -168,7 +170,8 @@ class PostmonWebJSONPTest(PostmonWebTest):
                                self.jsonp_func_name))
 
         regexp = re.compile(r'^%s\((.*)\);$' % self.jsonp_func_name)
-        json_data = re.findall(regexp, response.body)[0]
+        body_str = response.body if isinstance(response.body, str) else response.body.decode('utf-8')
+        json_data = re.findall(regexp, body_str)[0]
 
         return json.loads(json_data)
 
@@ -180,7 +183,7 @@ class PostmonV1WebTest(PostmonWebTest):
     '''
     @classmethod
     def setUpClass(cls):
-        cls.db = MongoDb()
+        cls.db = MongoDB()
         cls.db.insert_or_update_uf({
             'sigla': 'SP',
             'campo': 'valor',
@@ -192,8 +195,8 @@ class PostmonV1WebTest(PostmonWebTest):
 
     @classmethod
     def tearDownClass(cls):
-        cls.db._db.cidades.remove()
-        cls.db._db.ufs.remove()
+        cls.db._db.cidades.delete_many({})
+        cls.db._db.ufs.delete_many({})
 
     def setUp(self):
         super(PostmonV1WebTest, self).setUp()
@@ -204,7 +207,8 @@ class PostmonV1WebTest(PostmonWebTest):
 
     def test_uf(self):
         response = self.app.get('/v1/uf/sp')
-        jr = json.loads(response.body)
+        body_str = response.body if isinstance(response.body, str) else response.body.decode('utf-8')
+        jr = json.loads(body_str)
         self.assertEqual({'campo': 'valor'}, jr)
 
     def test_uf_404(self):
@@ -213,7 +217,8 @@ class PostmonV1WebTest(PostmonWebTest):
 
     def test_cidade(self):
         response = self.app.get('/v1/cidade/SP/S%C3%83O PAULO')
-        jr = json.loads(response.body)
+        body_str = response.body if isinstance(response.body, str) else response.body.decode('utf-8')
+        jr = json.loads(body_str)
         self.assertEqual({'area_km2': '1099'}, jr)
 
     def test_cidade_404(self):
@@ -236,8 +241,10 @@ class PostmonXMLTest(unittest.TestCase):
     def test_xml_return(self):
         import xmltodict
         response = self.get_cep('06708070')
-        parsed = xmltodict.parse(response.body)
+        body_str = response.body if isinstance(response.body, str) else response.body.decode('utf-8')
+        parsed = xmltodict.parse(body_str)
         result = parsed.get('result')
+        assert result is not None
         self.assertEqual(result['bairro'], u'Parque S\xe3o George')
         self.assertEqual(result['cidade'], u'Cotia')
         self.assertEqual(result['cep'], u'06708070')
@@ -253,7 +260,8 @@ class PostmonOtherRoutesTest(unittest.TestCase):
     def test_crossdomain(self):
         expected = bottle.template('crossdomain')
         response = self.app.get('/crossdomain.xml')
-        self.assertMultiLineEqual(expected, response.body)
+        body_str = response.body if isinstance(response.body, str) else response.body.decode('utf-8')
+        self.assertMultiLineEqual(expected, body_str)
 
 
 class PostmonErrors(unittest.TestCase):
@@ -278,7 +286,7 @@ class PostmonErrors(unittest.TestCase):
         self.assertEqual("404 CEP 99999999 nao encontrado", response.status)
         self.assertEqual('application/json', response.headers['Content-Type'])
         self.assertEqual('*', response.headers['Access-Control-Allow-Origin'])
-        self.assertEqual('', response.body)
+        self.assertEqual(b'', response.body)
 
     @mock.patch('PostmonServer._get_info_from_source')
     def test_404_status_with_xml_format(self, _mock):
@@ -287,7 +295,7 @@ class PostmonErrors(unittest.TestCase):
         self.assertEqual("404 CEP 99999999 nao encontrado", response.status)
         self.assertEqual('application/xml', response.headers['Content-Type'])
         self.assertEqual('*', response.headers['Access-Control-Allow-Origin'])
-        self.assertEqual('', response.body)
+        self.assertEqual(b'', response.body)
 
     @mock.patch('PostmonServer._get_info_from_source')
     def test_503_status(self, _mock):
@@ -297,7 +305,7 @@ class PostmonErrors(unittest.TestCase):
                          response.status)
         self.assertEqual('application/json', response.headers['Content-Type'])
         self.assertEqual('*', response.headers['Access-Control-Allow-Origin'])
-        self.assertEqual('', response.body)
+        self.assertEqual(b'', response.body)
 
     @mock.patch('PostmonServer._get_info_from_source')
     def test_503_status_with_xml_format(self, _mock):
@@ -307,7 +315,7 @@ class PostmonErrors(unittest.TestCase):
                          response.status)
         self.assertEqual('application/xml', response.headers['Content-Type'])
         self.assertEqual('*', response.headers['Access-Control-Allow-Origin'])
-        self.assertEqual('', response.body)
+        self.assertEqual(b'', response.body)
 
     def test_invalid_format(self):
         response = self.get_cep('99999999', format='xxx', expect_errors=True)
@@ -315,7 +323,7 @@ class PostmonErrors(unittest.TestCase):
                          response.status)
         self.assertEqual('application/json', response.headers['Content-Type'])
         self.assertEqual('*', response.headers['Access-Control-Allow-Origin'])
-        self.assertEqual('', response.body)
+        self.assertEqual(b'', response.body)
 
     @mock.patch('PostmonServer.Database')
     def test_404_cache_hit(self, _db):
@@ -331,7 +339,7 @@ class PostmonErrors(unittest.TestCase):
         self.assertEqual("404 CEP %s nao encontrado" % cep, response.status)
         self.assertEqual('application/json', response.headers['Content-Type'])
         self.assertEqual('*', response.headers['Access-Control-Allow-Origin'])
-        self.assertEqual('', response.body)
+        self.assertEqual(b'', response.body)
         _db_instance.get_one.assert_called_with(cep, fields={'_id': False})
 
     def test_404_hard(self):
@@ -384,7 +392,7 @@ class TestExpired(unittest.TestCase):
 
 class TestDatabase(unittest.TestCase):
     def test_insert_notfound(self):
-        db = MongoDb()
+        db = MongoDB()
         cep = u'11111111'
         db.remove(cep)
         db.insert_or_update({
@@ -406,162 +414,5 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(expected, result)
 
 
-class PackTrackTest(unittest.TestCase):
-
-    def setUp(self):
-        db = MongoDb()
-        self.collection = db.packtrack._collection
-        self.app = webtest.TestApp(bottle.app())
-
-    def tearDown(self):
-        self.collection.remove()
-
-    def _get(self, track, provider='ect', expect_errors=False):
-        url = '/v1/rastreio/{}/{}'.format(provider, track)
-        response = self.app.get(url, expect_errors=expect_errors)
-        if expect_errors:
-            return response
-
-        jr = json.loads(response.body)
-        return jr
-
-    def _post(self, track, data):
-        url = '/v1/rastreio/ect/' + track
-        response = self.app.post(url, json.dumps(data),
-                                 headers={'Content-Type': 'application/json'})
-        jr = json.loads(response.body)
-        return jr
-
-    @mock.patch('PackTracker.correios')
-    def test_get(self, _mock):
-        data = [{
-            "codigo": "test",
-            "servico": "ect",
-            "historico": [{
-                "detalhes": None,
-                "local": "AGF SAO PATRICIO - Sao Paulo/SP",
-                "data": "19/07/2016 11:37",
-                "situacao": "Postado"
-            }]
-        }]
-        _mock.return_value = data[0]["historico"]
-        response = self._get("test")
-        self.assertEqual(data[0], response)
-
-    @mock.patch('PackTracker.correios')
-    def test_get_404(self, _mock):
-        _mock.side_effect = AttributeError
-        response = self._get("test", expect_errors=True)
-        self.assertEqual('404 Pacote test nao encontrado', response.status)
-
-    def test_get_another_provider(self):
-        response = self._get("test", provider="google", expect_errors=True)
-        self.assertEqual('404 Servico google nao encontrado', response.status)
-
-    def test_register_packtrack(self):
-        data = {
-            'callback': 'http://example.com',
-        }
-        response = self._post('test', data)
-        self.assertTrue(response['token'])
-
-    def test_register_same_packtrack(self):
-        data = [{
-            'callback': 'http://example.com',
-            'something': 'XXX',
-        }, {
-            'callback': 'http://example.com',
-            'something': 'YYY',
-        }]
-        response = self._post('test', data[0])
-        token = response['token']
-
-        response = self._post('test', data[1])
-        self.assertEqual(token, response['token'])
-
-        obj = self.collection.find_one(ObjectId(token))
-        self.assertEqual(data, obj['_meta']['callbacks'])
-
-    def test_register_same_callback(self):
-        data = {
-            'callback': 'http://example.com',
-            'something': 'XXX',
-        }
-        response = self._post('test', data)
-        token = response['token']
-        response = self._post('test', data)
-
-        obj = self.collection.find_one(ObjectId(token))
-        self.assertEqual([data], obj['_meta']['callbacks'])
-
-    @mock.patch('PackTracker.correios')
-    def test_run(self, _mock):
-        _mock.return_value = [{
-            "detalhes": None,
-            "local": "AGF SAO PATRICIO - Sao Paulo/SP",
-            "data": "19/07/2016 11:37",
-            "situacao": "Postado"
-        }]
-        data = {
-            'callback': 'http://example.com',
-            'something': 'XXX',
-        }
-        self._post('test', data)
-        changed = PackTracker.run('ect', 'test')
-        self.assertTrue(changed)
-
-        self._post('test', data)
-        changed = PackTracker.run('ect', 'test')
-        self.assertFalse(changed)
-
-        _mock.return_value.append({
-            "detalhes": "Encaminhado para UNIDADE DE CORREIOS/BR",
-            "local": "AGF SAO PATRICIO - Sao Paulo/SP",
-            "data": "20/07/2016 08:46",
-            "situacao": "Encaminhado"
-        })
-        self._post('test', data)
-        changed = PackTracker.run('ect', 'test')
-        self.assertTrue(changed)
-
-        self._post('test', data)
-        changed = PackTracker.run('ect', 'test')
-        self.assertFalse(changed)
-
-    @mock.patch('PackTracker.requests.post')
-    def test_report(self, _mock_requests):
-
-        input_data = {
-            'callback': 'http://example.com',
-            'something': 'XXX',
-        }
-        response = self._post('test', input_data)
-        token = response['token']
-
-        encomenda = correios.Encomenda('track')
-        status = correios.Status(
-            local="AGF SAO PATRICIO - Sao Paulo/SP",
-            data="19/07/2016 11:37",
-            situacao="Postado",
-        )
-        encomenda.adicionar_status(status)
-        with mock.patch('PackTracker.packtrack') as _mock_correios:
-            _mock_correios.Correios.track.return_value = encomenda
-            changed = PackTracker.run('ect', 'test')
-        self.assertTrue(changed)
-
-        PackTracker.report('ect', 'test')
-
-        call = _mock_requests.call_args
-        self.assertEqual(('http://example.com',), call[0])
-
-        data = json.loads(call[1]['data'])
-
-        self.assertEqual(input_data, data['input'])
-        self.assertEqual(token, data['token'])
-        self.assertEqual([{
-            u'detalhes': status.detalhes,
-            u'local': status.local,
-            u'situacao': status.situacao,
-            u'data': status.data,
-        }], data['historico'])
+if __name__ == '__main__':
+    unittest.main()

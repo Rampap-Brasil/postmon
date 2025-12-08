@@ -6,3 +6,20 @@ build
 celerybeat-schedule
 *.log
 .coverage
+
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Variaveis de ambiente (contem segredos)
+.env
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Cache
+__pycache__/
+.pytest_cache/

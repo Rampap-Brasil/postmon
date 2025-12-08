@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 import logging
-import os
-import re
 
 import requests
+
+from GeoTracker import GeoTracker
 
 logger = logging.getLogger(__name__)
 _notfound_key = '__notfound__'
@@ -33,6 +33,15 @@ class CepTracker(object):
             'timeout': 10
         }
     ]
+
+    def __init__(self):
+        """Inicializa o CepTracker com GeoTracker opcional"""
+        self.geo_tracker = GeoTracker()
+        if self.geo_tracker.enabled:
+            logger.info('CepTracker: Geocodificacao habilitada')
+        else:
+            logger.info('CepTracker: Geocodificacao desabilitada '
+                       '(GOOGLE_MAPS_API_KEY nao configurada)')
 
     def _request_viacep(self, cep):
         """Consultar ViaCEP"""
@@ -143,7 +152,9 @@ class CepTracker(object):
         
         # Se todas as APIs falharam, relançar último erro
         logger.error('Todas as APIs falharam. Último erro: %s', last_error)
-        raise last_error
+        if last_error is not None:
+            raise last_error
+        raise requests.exceptions.RequestException('Todas as APIs falharam')
 
     def track(self, cep):
         logger.info("=== INICIANDO TRACK CEP: %s ===", cep)
@@ -152,7 +163,7 @@ class CepTracker(object):
             data = self._request(cep)
             logger.info("Dados recebidos da API: %s", data)
             
-        except Exception as ex:
+        except Exception:
             logger.exception('Erro ao consultar CEP: %s', cep)
             return [{
                 'cep': cep,
@@ -201,11 +212,32 @@ class CepTracker(object):
                     "cidade": data.get('localidade', ''),
                     "estado": data.get('uf', ''),
                 }
-                
+
                 # Complemento da API
                 if data.get('complemento'):
                     result_data['complemento'] = data.get('complemento')
-                    
+
+                # Geocodificacao: obter coordenadas do endereco
+                if self.geo_tracker.enabled:
+                    logger.info("Iniciando geocodificacao do endereco")
+                    geo_result = self.geo_tracker.geocode(
+                        logradouro=result_data.get('logradouro', ''),
+                        bairro=result_data.get('bairro', ''),
+                        cidade=result_data.get('cidade', ''),
+                        estado=result_data.get('estado', '')
+                    )
+                    if geo_result:
+                        if geo_result.get('latitude') is not None:
+                            result_data['latitude'] = geo_result['latitude']
+                            result_data['longitude'] = geo_result['longitude']
+                            logger.info("Coordenadas obtidas: lat=%s, lng=%s",
+                                       result_data['latitude'],
+                                       result_data['longitude'])
+                        # Salvar metadados de geocodificacao
+                        result_data['_meta']['geo_source'] = geo_result.get('geo_source')
+                        result_data['_meta']['geo_status'] = geo_result.get('status')
+                        result_data['_meta']['geo_date'] = geo_result.get('geo_date')
+
                 logger.info("Dados processados: %s", result_data)
                 result.append(result_data)
 

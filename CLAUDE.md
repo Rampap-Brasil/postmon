@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Postmon is a Brazilian CEP (postal code) and tracking API service built with Python, Bottle framework, and MongoDB. The application provides REST APIs for:
+Postmon is a Brazilian CEP (postal code) API service built with Python 3, Bottle framework, and MongoDB. The application provides REST APIs for:
 
-- CEP (postal code) lookup with fallback APIs (ViaCEP → BrasilAPI)
-- Package tracking integration
+- CEP (postal code) lookup with fallback APIs (ViaCEP -> BrasilAPI)
+- Geographic coordinates via Google Maps Geocoding API
 - IBGE city/state data integration
 - Background task scheduling with Celery
 
@@ -17,25 +17,47 @@ The codebase follows a modular structure:
 
 - **PostmonServer.py**: Main Bottle web server with REST API routes
 - **CepTracker.py**: CEP lookup logic with multiple API fallbacks and caching
-- **PackTracker.py**: Package tracking functionality
+- **GeoTracker.py**: Geocoding integration with Google Maps API for coordinates
 - **IbgeTracker.py**: IBGE data integration for cities/states
-- **database.py**: MongoDB connection and data access layer
+- **database.py**: MongoDB connection and data access layer (pymongo 4.x)
 - **PostmonTaskScheduler.py**: Celery-based background task scheduler
 - **utils.py**: Common utilities (CORS, slugify, etc.)
 
 The application uses MongoDB for caching CEP lookups and storing IBGE data, with configurable expiration times (10 minutes for notfound records, 6 months for valid records).
 
-## Common Development Commands
+## Development Setup with UV
 
-### Testing
-```bash
-make test          # Run tests with PEP8 checks
-make coverage      # Run tests with coverage reports
-make pep8          # Run only PEP8/flake8 checks
-nosetests          # Run tests directly
+This project uses [UV](https://docs.astral.sh/uv/) for fast Python package management.
+
+### Initial Setup
+```powershell
+# Create virtual environment
+py -m uv venv
+
+# Activate (PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+# Activate (CMD)
+.venv\Scripts\activate.bat
+
+# Install dependencies
+py -m uv pip install -r requirements.txt --python .\.venv\Scripts\python.exe
+
+# Install dev dependencies
+py -m uv pip install -r requirements-dev.txt --python .\.venv\Scripts\python.exe
 ```
 
-### Running the Application
+### Common Development Commands
+
+#### Testing
+```bash
+pytest                      # Run all tests
+pytest test/ -v             # Run tests with verbose output
+pytest --cov=.              # Run tests with coverage
+flake8                      # Run linting
+```
+
+#### Running the Application
 ```bash
 # Local development (port 9876)
 python PostmonServer.py
@@ -45,10 +67,10 @@ ipython -i PostmonServer.py
 >> _standalone()
 
 # Background scheduler
-celery worker -B -A PostmonTaskScheduler -l info
+celery -A PostmonTaskScheduler worker -B -l info
 ```
 
-### Docker
+#### Docker
 ```bash
 docker build -t postmon .
 docker run -d -p 80:9876 postmon
@@ -59,56 +81,88 @@ docker-compose up -d
 
 ## Environment Variables
 
-Required for MongoDB authentication:
+### MongoDB Configuration
 - `POSTMON_DB_HOST`: MongoDB host (default: localhost)
 - `POSTMON_DB_PORT`: MongoDB port (default: 27017)
 - `POSTMON_DB_NAME`: Database name (default: postmon)
 - `POSTMON_DB_USER`: MongoDB username
 - `POSTMON_DB_PASSWORD`: MongoDB password
 
+### Geocoding Configuration (Google Maps)
+- `GOOGLE_MAPS_API_KEY`: Google Maps Geocoding API key (enables coordinate lookup)
+- `GEOCODING_BATCH_SIZE`: Number of CEPs to process per batch task (default: 100)
+
+### Monitoring
+- `SENTRY_DSN`: Sentry DSN for error tracking (optional)
+
 ## Key Dependencies
 
-- bottle: Web framework
-- pymongo: MongoDB driver
-- celery: Background task queue
-- requests: HTTP client for external APIs
-- packtrack: Package tracking (requires Python 2.7)
-- flake8: Code linting
-- nose: Testing framework
+- **bottle**: Web framework
+- **pymongo**: MongoDB driver (4.x)
+- **celery**: Background task queue (5.x)
+- **requests**: HTTP client for external APIs
+- **sentry-sdk**: Error tracking
+- **python-slugify**: URL slug generation
+- **flake8**: Code linting
+- **pytest**: Testing framework
 
 ## API Structure
 
-- `/v1/cep/{cep}`: CEP lookup with IBGE city/state info
-- `/uf/{sigla-uf}`: State information
-- `/cidade/{sigla-uf}/{nome-cidade}`: City information
+- `/v1/cep/{cep}`: CEP lookup with IBGE city/state info and coordinates
+- `/v1/uf/{sigla-uf}`: State information
+- `/v1/cidade/{sigla-uf}/{nome-cidade}`: City information
 - `/__health__`: Health check endpoint
 
 The CEP lookup implements intelligent fallback between ViaCEP and BrasilAPI, with MongoDB caching and detailed logging for debugging connectivity issues.
 
-## Docker Configuration Notes
+### CEP Response with Coordinates
 
-**IMPORTANT**: This application requires Python 2.7 due to the `packtrack` dependency which relies on BeautifulSoup 3 (incompatible with Python 3).
+When `GOOGLE_MAPS_API_KEY` is configured, CEP responses include geographic coordinates:
 
-### Dockerfile Configuration
-The Dockerfile is configured for Python 2.7 with Debian Stretch using archived repositories:
-```dockerfile
-FROM python:2.7-slim-stretch
-
-# Configure archived repositories for Debian Stretch (EOL)
-RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
-    sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
-    sed -i '/stretch-updates/d' /etc/apt/sources.list
+```json
+{
+  "cep": "01310100",
+  "logradouro": "Avenida Paulista",
+  "bairro": "Bela Vista",
+  "cidade": "Sao Paulo",
+  "estado": "SP",
+  "latitude": -23.5614,
+  "longitude": -46.6558,
+  "estado_info": { ... },
+  "cidade_info": { ... }
+}
 ```
 
-### Migration Considerations
-- **Current**: Python 2.7 + packtrack (full functionality)
-- **Future**: To migrate to Python 3, the packtrack dependency needs replacement:
-  - Option 1: Find Python 3 compatible package tracking library
-  - Option 2: Implement custom tracking using modern HTTP clients
-  - Option 3: Remove package tracking functionality
+### Geocoding Background Task
 
-### Build Troubleshooting
-If Docker build fails with repository errors:
-1. Ensure using `python:2.7-slim-stretch` base image
-2. Repository configuration points to `archive.debian.org`
-3. Stretch-updates repositories are disabled (they don't exist in archives)
+The `geocode_existing_ceps` Celery task processes existing CEPs without coordinates:
+- Runs every 6 hours automatically
+- Processes 100 CEPs per batch (configurable via `GEOCODING_BATCH_SIZE`)
+- Respects Google API rate limits (50ms delay between requests)
+- Marks failed geocoding attempts to avoid retrying
+
+## Python Version
+
+**Required**: Python 3.10+
+
+This project was migrated from Python 2.7 to Python 3. Key changes:
+- pymongo 4.x (uses `update_one`, `count_documents`, URI authentication)
+- sentry-sdk (replaced raven)
+- python-slugify (replaced unicode_slugify)
+- celery 5.x
+- pytest (replaced nose)
+
+## Docker Configuration
+
+### Dockerfile for Python 3
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+
+EXPOSE 9876
+CMD ["python", "PostmonServer.py"]
+```

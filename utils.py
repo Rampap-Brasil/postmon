@@ -3,7 +3,8 @@ from slugify import slugify
 
 
 def slug(value):
-    value = slugify(value, only_ascii=True, spaces=True)
+    # python-slugify: allow_unicode=False (ASCII only), separator=' ' (keep spaces)
+    value = slugify(value, allow_unicode=False, separator=' ')
     return value.upper()
 
 
@@ -18,7 +19,7 @@ class EnableCORS(object):
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
                 'Access-Control-Allow-Headers':
-                    ', '.join(bottle.request.headers.keys())
+                    ', '.join(bottle.request.headers.keys())  # type: ignore[union-attr]
             })
             if bottle.request.method != 'OPTIONS':
                 # actual request; reply with the actual response

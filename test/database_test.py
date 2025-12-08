@@ -31,6 +31,7 @@ class MongoDbTest(unittest.TestCase):
         })
 
         result = self.db.get_one('UNIQUE_KEY')
+        assert result is not None
 
         self.assertEqual(result['estado'], 'B')
         self.assertNotIn('logradouro', result)
@@ -53,10 +54,11 @@ class UFTest(unittest.TestCase):
         self.db.insert_or_update_uf(self.uf_sp)
 
     def tearDown(self):
-        self.db._db.ufs.remove()
+        self.db._db.ufs.delete_many({})
 
     def test_get(self):
         result = self.db.get_one_uf_by_nome(u'São Paulo')
+        assert result is not None
         for key, expected in self.uf_sp.items():
             self.assertEqual(expected, result[key])
 
@@ -67,6 +69,7 @@ class UFTest(unittest.TestCase):
         })
 
         result = self.db.get_one_uf_by_nome(u'São Paulo')
+        assert result is not None
         self.assertEqual('36', result['codigo_ibge'])
         self.assertEqual('SP', result['sigla'])
 
@@ -82,15 +85,17 @@ class CidadeTest(unittest.TestCase):
         self.db.insert_or_update_cidade(self.cidade_sp)
 
     def tearDown(self):
-        self.db._db.ufs.remove()
+        self.db._db.cidades.delete_many({})
 
     def test_get(self):
         result = self.db.get_one_cidade(u'SP', u'São Paulo')
+        assert result is not None
         for key, expected in self.cidade_sp.items():
             self.assertEqual(expected, result[key])
 
     def test_get_alt(self):
         result = self.db.get_one_cidade(u'SP', u'Outro lugar (São Paulo)')
+        assert result is not None
         self.assertEqual('1099', result['area_km2'])
 
     def test_update(self):
@@ -100,4 +105,5 @@ class CidadeTest(unittest.TestCase):
         })
 
         result = self.db.get_one_cidade(u'SP', u'São Paulo')
+        assert result is not None
         self.assertEqual('2000', result['area_km2'])

@@ -16,7 +16,9 @@ class MongoDB(object):
         'bairro',
         'cidade',
         'estado',
-        'complemento'
+        'complemento',
+        'latitude',
+        'longitude'
     ]
 
     def __init__(self):
@@ -26,33 +28,23 @@ class MongoDB(object):
         USERNAME = os.environ.get('POSTMON_DB_USER')
         PASSWORD = os.environ.get('POSTMON_DB_PASSWORD')
 
-        self._client = pymongo.MongoClient(HOST, PORT)
-        self._db = self._client[DATABASE]
+        # Build connection URI for pymongo 4.x
         if all((USERNAME, PASSWORD)):
-            self._db.authenticate(USERNAME, PASSWORD)
-        self.packtrack = PackTrack(self._db.packtrack)
+            uri = 'mongodb://{}:{}@{}:{}/{}'.format(
+                USERNAME, PASSWORD, HOST, PORT, DATABASE)
+        else:
+            uri = 'mongodb://{}:{}'.format(HOST, PORT)
+
+        self._client = pymongo.MongoClient(uri)
+        self._db = self._client[DATABASE]
 
     def create_indexes(self):
-        self._db.ceps.ensure_index('cep')
+        self._db.ceps.create_index('cep')
 
     def _fix_kwargs(self, kwargs):
-        """Fix kwargs for different pymongo versions"""
+        """Fix kwargs for pymongo 4.x - convert 'fields' to 'projection'"""
         if 'fields' in kwargs:
-            # For pymongo 3.x+, use 'projection' instead of 'fields'
-            try:
-                # Simple version check based on pymongo version
-                pymongo_version = tuple(map(int, pymongo.version.split('.')))
-                if pymongo_version >= (3, 0, 0):
-                    kwargs['projection'] = kwargs.pop('fields')
-            except:
-                # If version check fails, try to detect by attempting to use projection
-                try:
-                    # Test call with projection to see if it's supported
-                    self._db.ceps.find_one({}, projection={'_id': 1})
-                    kwargs['projection'] = kwargs.pop('fields')
-                except:
-                    # Keep fields if projection is not supported
-                    pass
+            kwargs['projection'] = kwargs.pop('fields')
         return kwargs
 
     def get_one(self, cep, **kwargs):
@@ -97,19 +89,19 @@ class MongoDB(object):
         if empty_fields:
             update['$unset'] = dict((x, 1) for x in empty_fields)
 
-        self._db.ceps.update({'cep': obj['cep']}, update, upsert=True)
+        self._db.ceps.update_one({'cep': obj['cep']}, update, upsert=True)
 
     def insert_or_update_uf(self, obj, **kwargs):
         update = {'$set': obj}
-        self._db.ufs.update({'sigla': obj['sigla']}, update, upsert=True)
+        self._db.ufs.update_one({'sigla': obj['sigla']}, update, upsert=True)
 
     def insert_or_update_cidade(self, obj, **kwargs):
         update = {'$set': obj}
         chave = 'sigla_uf_nome_cidade'
-        self._db.cidades.update({chave: obj[chave]}, update, upsert=True)
+        self._db.cidades.update_one({chave: obj[chave]}, update, upsert=True)
 
     def remove(self, cep):
-        self._db.ceps.remove({'cep': cep})
+        self._db.ceps.delete_one({'cep': cep})
 
     def find_empty_bairro_records(self):
         """Find all CEP records with empty or missing bairro field"""
@@ -174,61 +166,101 @@ class MongoDB(object):
             'message': 'Successfully deleted {} records'.format(result.deleted_count)
         }
 
+    def find_ceps_without_coordinates(self, limit=100):
+        """
+        Busca CEPs validos que nao possuem coordenadas geograficas.
 
-class PackTrack(object):
+        Args:
+            limit: Numero maximo de registros a retornar
 
-    def __init__(self, collection):
-        self._collection = collection
-
-    def _patch(self, obj):
-        try:
-            _id = obj.pop('_id')
-        except KeyError:
-            return
-        else:
-            obj['token'] = str(_id)
-
-    def get_one(self, provider, track):
-        spec = {'servico': provider, 'codigo': track}
-        obj = self._collection.find_one(spec)
-        self._patch(obj)
-        return obj
-
-    def get_all(self):
-        objs = list(self._collection.find())
-        for obj in objs:
-            self._patch(obj)
-        return objs
-
-    def register(self, provider, track, callback):
-        key = {'servico': provider, 'codigo': track}
-        data = {
-            '$addToSet': {
-                '_meta.callbacks': callback,
-            },
-            '$setOnInsert': {
-                '_meta.created_at': datetime.utcnow(),
-                '_meta.changed_at': None,
-                '_meta.checked_at': None,
-            },
+        Returns:
+            Lista de documentos CEP sem latitude/longitude
+        """
+        query = {
+            '$and': [
+                {'$or': [
+                    {'latitude': {'$exists': False}},
+                    {'latitude': None}
+                ]},
+                {'_meta.__notfound__': {'$exists': False}}
+            ]
         }
-        self._collection.find_and_modify(key, data, upsert=True)
-        obj = self._collection.find_one(key)
-        self._patch(obj)
-        return obj['token']
+        return list(self._db.ceps.find(query).limit(limit))
 
-    def update(self, provider, track, data, changed):
-        key = {'servico': provider, 'codigo': track}
-        now = datetime.utcnow()
+    def update_coordinates(self, cep, latitude, longitude,
+                          geo_source='google_maps', geo_status='success'):
+        """
+        Atualiza as coordenadas geograficas de um CEP.
 
-        set_ = {
-            "_meta.checked_at": now
+        Args:
+            cep: Codigo do CEP
+            latitude: Latitude em graus decimais
+            longitude: Longitude em graus decimais
+            geo_source: Fonte das coordenadas (ex: 'google_maps')
+            geo_status: Status da geocodificacao ('success', 'not_found', 'error')
+        """
+        update_data = {
+            '_meta.geo_source': geo_source,
+            '_meta.geo_status': geo_status,
+            '_meta.geo_date': datetime.now()
         }
-        if changed:
-            set_.update({
-                '_meta.changed_at': now,
-                'historico': data,
-            })
 
-        query = {"$set": set_}
-        self._collection.update(key, query)
+        if latitude is not None and longitude is not None:
+            update_data['latitude'] = latitude
+            update_data['longitude'] = longitude
+
+        self._db.ceps.update_one(
+            {'cep': cep},
+            {'$set': update_data}
+        )
+
+    def mark_geocoding_failed(self, cep, geo_status='not_found', geo_source='google_maps'):
+        """
+        Marca um CEP como geocodificacao falhou (para nao tentar novamente).
+
+        Args:
+            cep: Codigo do CEP
+            geo_status: Status ('not_found', 'error', 'zero_results')
+            geo_source: Fonte tentada
+        """
+        self._db.ceps.update_one(
+            {'cep': cep},
+            {'$set': {
+                '_meta.geo_source': geo_source,
+                '_meta.geo_status': geo_status,
+                '_meta.geo_date': datetime.now()
+            }}
+        )
+
+    def get_geocoding_stats(self):
+        """
+        Retorna estatisticas de geocodificacao.
+
+        Returns:
+            dict com total de CEPs, geocodificados, pendentes e falhas
+        """
+        # Total de CEPs validos (excluindo notfound)
+        total = self._db.ceps.count_documents({'_meta.__notfound__': {'$exists': False}})
+
+        # CEPs com coordenadas
+        with_coords = self._db.ceps.count_documents({
+            'latitude': {'$exists': True, '$ne': None},
+            '_meta.__notfound__': {'$exists': False}
+        })
+
+        # CEPs marcados como falha de geocodificacao
+        failed = self._db.ceps.count_documents({
+            '_meta.geo_status': {'$in': ['not_found', 'error', 'zero_results']},
+            '_meta.__notfound__': {'$exists': False}
+        })
+
+        # Pendentes = total - com coordenadas - falhas
+        pending = total - with_coords - failed
+
+        return {
+            'total': total,
+            'geocoded': with_coords,
+            'failed': failed,
+            'pending': max(0, pending),
+            'percentage': round((with_coords / float(total) * 100), 2) if total > 0 else 0
+        }
