@@ -27,4 +27,4 @@ COPY . .
 
 EXPOSE 9876
 
-ENTRYPOINT ["python", "PostmonServer.py"]
+CMD ["python", "PostmonServer.py"]
