@@ -188,11 +188,14 @@ class CepTracker(object):
             })
         else:
             logger.info("CEP encontrado, processando dados")
-            
-            # Verificar se bairro está vazio ou em branco
+
+            # Verificar se bairro e logradouro estão vazios
             bairro = data.get('bairro', '').strip()
-            if not bairro:
-                logger.info("CEP com bairro em branco, marcando como not found")
+            logradouro = data.get('logradouro', '').strip()
+
+            if not bairro and not logradouro:
+                # CEP sem bairro E sem logradouro é considerado incompleto
+                logger.info("CEP sem bairro e sem logradouro, marcando como not found")
                 result.append({
                     'cep': cep,
                     '_meta': {
@@ -207,7 +210,7 @@ class CepTracker(object):
                         "v_date": now,
                     },
                     "cep": data.get('cep', cep).replace('-', ''),
-                    "logradouro": data.get('logradouro', ''),
+                    "logradouro": logradouro,
                     "bairro": bairro,
                     "cidade": data.get('localidade', ''),
                     "estado": data.get('uf', ''),
