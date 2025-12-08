@@ -220,9 +220,14 @@ class CepTracker(object):
                 continue
 
             except requests.exceptions.HTTPError as ex:
+                # HTTP 404 = CEP não encontrado - não tentar outra API
+                if ex.response is not None and ex.response.status_code == 404:
+                    logger.info('CEP não encontrado na API %s (404)', api_name)
+                    CircuitBreaker.record_success(api_name)
+                    raise  # Propagar 404 para ser tratado em track()
+
+                # Outros HTTP errors (5xx, etc) - tentar próxima API
                 last_error = ex
-                # HTTP errors (4xx, 5xx) não ativam circuit breaker
-                # pois podem ser erros específicos do CEP, não da API
                 logger.error('Erro HTTP na API %s: %s', api_name, ex)
                 continue
 

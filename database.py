@@ -62,7 +62,8 @@ class MongoDB(object):
 
     def get_one_cidade(self, sigla_uf, nome_cidade, **kwargs):
         def key_func(_uf, _cidade):
-            return u'{}_{}'.format(slug(_uf), slug(_cidade))
+            # Usar mesmo formato que IbgeTracker: slug('%s_%s' % (uf, cidade))
+            return slug('{}_{}'.format(_uf, _cidade))
         sigla_uf_nome_cidade = key_func(sigla_uf, nome_cidade)
         spec = {'sigla_uf_nome_cidade': sigla_uf_nome_cidade}
 
