@@ -7,7 +7,6 @@ import json
 import logging
 import xmltodict
 from bottle import run, request, response, template, HTTPResponse
-from bottle.ext.healthcheck import HealthCheck  # type: ignore[import-untyped]
 import sentry_sdk
 
 from CepTracker import CepTracker, _notfound_key
@@ -16,7 +15,6 @@ from database import MongoDB as Database
 from utils import EnableCORS
 
 logger = logging.getLogger(__name__)
-HealthCheck(bottle, "/__health__")
 
 app: bottle.Bottle = bottle.default_app()
 app.catchall = False
@@ -221,6 +219,13 @@ def cidade(sigla_uf, nome):
 def crossdomain():
     response.content_type = 'application/xml'
     return template('crossdomain')
+
+
+@app.route('/__health__')  # type: ignore[misc]
+def healthcheck():
+    """Endpoint de healthcheck para monitoramento."""
+    response.content_type = 'text/plain'
+    return 'OK'
 
 
 app.install(validate_format)
