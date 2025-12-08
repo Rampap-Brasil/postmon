@@ -132,22 +132,23 @@ class CepTracker(object):
         """Consultar BrasilAPI como alternativa"""
         clean_cep = cep.replace('-', '').replace('.', '')
         url = 'https://brasilapi.com.br/api/cep/v1/{}'.format(clean_cep)
-        
+
         logger.info("Tentando BrasilAPI: %s", url)
-        
+
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
-        
+
         # Converter formato BrasilAPI para ViaCEP
+        # BrasilAPI usa: street, neighborhood, city, state
         return {
             'cep': data.get('cep', ''),
             'logradouro': data.get('street', ''),
             'complemento': '',
-            'bairro': data.get('district', ''),
+            'bairro': data.get('neighborhood', ''),
             'localidade': data.get('city', ''),
             'uf': data.get('state', ''),
-            'ibge': data.get('city_ibge', '')
+            'ibge': ''
         }
 
     def _request_cepaberto(self, cep):
@@ -184,9 +185,10 @@ class CepTracker(object):
         logger.info("CEP limpo: %s", clean_cep)
 
         # Lista de métodos para tentar em ordem
+        # BrasilAPI primeiro (Cloudflare) pois ViaCEP (DigitalOcean) pode estar inacessível
         methods = [
-            ('ViaCEP', self._request_viacep),
             ('BrasilAPI', self._request_brasilapi),
+            ('ViaCEP', self._request_viacep),
             # ('CEPAberto', self._request_cepaberto),  # Desabilitado - precisa token
         ]
 
