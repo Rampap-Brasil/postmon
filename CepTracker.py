@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 import requests
@@ -12,6 +12,80 @@ _notfound_key = '__notfound__'
 
 # Configurar logging para debug
 logging.basicConfig(level=logging.INFO)
+
+
+class CircuitBreaker:
+    """
+    Implementa o padrão Circuit Breaker para APIs externas.
+    Desabilita temporariamente APIs que estão falhando para evitar
+    tentativas desnecessárias.
+    """
+    # Estado compartilhado entre todas as instâncias
+    _circuits = {}
+
+    # Configurações
+    FAILURE_THRESHOLD = 3  # Falhas consecutivas para abrir o circuito
+    RECOVERY_TIMEOUT = 300  # 5 minutos para tentar novamente
+
+    @classmethod
+    def is_open(cls, api_name):
+        """Verifica se o circuito está aberto (API desabilitada)"""
+        if api_name not in cls._circuits:
+            return False
+
+        circuit = cls._circuits[api_name]
+        if circuit['failures'] < cls.FAILURE_THRESHOLD:
+            return False
+
+        # Verificar se já passou o tempo de recuperação
+        if datetime.now() >= circuit['retry_after']:
+            logger.info("CircuitBreaker: Tentando reconectar %s após timeout", api_name)
+            return False
+
+        return True
+
+    @classmethod
+    def record_success(cls, api_name):
+        """Registra sucesso - reseta o contador de falhas"""
+        if api_name in cls._circuits:
+            logger.info("CircuitBreaker: %s recuperada, resetando contador", api_name)
+            del cls._circuits[api_name]
+
+    @classmethod
+    def record_failure(cls, api_name):
+        """Registra falha - incrementa contador"""
+        if api_name not in cls._circuits:
+            cls._circuits[api_name] = {
+                'failures': 0,
+                'retry_after': datetime.now()
+            }
+
+        cls._circuits[api_name]['failures'] += 1
+        failures = cls._circuits[api_name]['failures']
+
+        if failures >= cls.FAILURE_THRESHOLD:
+            cls._circuits[api_name]['retry_after'] = (
+                datetime.now() + timedelta(seconds=cls.RECOVERY_TIMEOUT)
+            )
+            logger.warning(
+                "CircuitBreaker: %s desabilitada por %d segundos após %d falhas",
+                api_name, cls.RECOVERY_TIMEOUT, failures
+            )
+        else:
+            logger.info("CircuitBreaker: %s falha %d/%d",
+                       api_name, failures, cls.FAILURE_THRESHOLD)
+
+    @classmethod
+    def get_status(cls):
+        """Retorna status de todos os circuitos para debug"""
+        return {
+            name: {
+                'failures': circuit['failures'],
+                'is_open': circuit['failures'] >= cls.FAILURE_THRESHOLD,
+                'retry_after': circuit['retry_after'].isoformat()
+            }
+            for name, circuit in cls._circuits.items()
+        }
 
 
 class CepTracker(object):
@@ -104,52 +178,63 @@ class CepTracker(object):
 
     def _request(self, cep):
         clean_cep = cep.replace('-', '').replace('.', '')
-        
+
         logger.info("=== DEBUG CepTracker ===")
         logger.info("CEP original: %s", cep)
         logger.info("CEP limpo: %s", clean_cep)
-        
+
         # Lista de métodos para tentar em ordem
         methods = [
             ('ViaCEP', self._request_viacep),
             ('BrasilAPI', self._request_brasilapi),
             # ('CEPAberto', self._request_cepaberto),  # Desabilitado - precisa token
         ]
-        
+
         last_error = None
-        
+
         for api_name, method in methods:
+            # Verificar circuit breaker
+            if CircuitBreaker.is_open(api_name):
+                logger.info("API %s desabilitada pelo CircuitBreaker, pulando...", api_name)
+                continue
+
             try:
                 logger.info("Tentando API: %s", api_name)
                 data = method(clean_cep)
                 logger.info("Sucesso com %s: %s", api_name, data)
+                CircuitBreaker.record_success(api_name)
                 return data
-                
+
             except requests.exceptions.ConnectTimeout as ex:
                 last_error = ex
                 logger.error('Timeout na API %s: %s', api_name, ex)
+                CircuitBreaker.record_failure(api_name)
                 continue
-                
+
             except requests.exceptions.ConnectionError as ex:
                 last_error = ex
                 logger.error('Erro de conexão na API %s: %s', api_name, ex)
+                CircuitBreaker.record_failure(api_name)
                 continue
-                
+
             except requests.exceptions.HTTPError as ex:
                 last_error = ex
+                # HTTP errors (4xx, 5xx) não ativam circuit breaker
+                # pois podem ser erros específicos do CEP, não da API
                 logger.error('Erro HTTP na API %s: %s', api_name, ex)
                 continue
-                
+
             except requests.exceptions.RequestException as ex:
                 last_error = ex
                 logger.error('Erro de requisição na API %s: %s', api_name, ex)
+                CircuitBreaker.record_failure(api_name)
                 continue
-                
+
             except Exception as ex:
                 last_error = ex
                 logger.error('Erro geral na API %s: %s', api_name, ex)
                 continue
-        
+
         # Se todas as APIs falharam, relançar último erro
         logger.error('Todas as APIs falharam. Último erro: %s', last_error)
         if last_error is not None:
