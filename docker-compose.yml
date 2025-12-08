@@ -1,6 +1,6 @@
 services:
     mongodb:
-        image: mongo:4.4
+        image: mongo:5.0
         container_name: postmon_mongodb
         restart: unless-stopped
         volumes:
