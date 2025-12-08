@@ -241,15 +241,37 @@ class CepTracker(object):
         logger.error('Todas as APIs falharam. Último erro: %s', last_error)
         if last_error is not None:
             raise last_error
-        raise requests.exceptions.RequestException('Todas as APIs falharam')
+        # Se não há último erro, significa que todas as APIs estão no circuit breaker
+        # Isso é diferente de "CEP não encontrado" - é uma indisponibilidade temporária
+        raise requests.exceptions.ConnectionError('Todas as APIs indisponiveis (circuit breaker)')
 
     def track(self, cep):
         logger.info("=== INICIANDO TRACK CEP: %s ===", cep)
-        
+
         try:
             data = self._request(cep)
             logger.info("Dados recebidos da API: %s", data)
-            
+
+        except requests.exceptions.ConnectionError as ex:
+            # ConnectionError inclui circuit breaker - re-raise para 503
+            logger.error('Erro de conexão ao consultar CEP %s: %s', cep, ex)
+            raise
+
+        except requests.exceptions.HTTPError as ex:
+            # HTTP 404 = CEP não encontrado na API
+            if ex.response is not None and ex.response.status_code == 404:
+                logger.info('CEP %s não encontrado na API (404)', cep)
+                return [{
+                    'cep': cep,
+                    '_meta': {
+                        "v_date": datetime.now(),
+                        _notfound_key: True,
+                    },
+                }]
+            # Outros erros HTTP - re-raise para 503
+            logger.error('Erro HTTP ao consultar CEP %s: %s', cep, ex)
+            raise
+
         except Exception:
             logger.exception('Erro ao consultar CEP: %s', cep)
             return [{
