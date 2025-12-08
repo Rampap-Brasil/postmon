@@ -1,6 +1,6 @@
 services:
     mongodb:
-        image: mongo:6.0
+        image: mongo:4.4
         container_name: postmon_mongodb
         restart: unless-stopped
         volumes:
@@ -8,7 +8,7 @@ services:
         environment:
             MONGO_INITDB_DATABASE: postmon
         healthcheck:
-            test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+            test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
             interval: 10s
             timeout: 5s
             retries: 5
