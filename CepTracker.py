@@ -89,24 +89,6 @@ class CircuitBreaker:
 
 
 class CepTracker(object):
-    # APIs alternativas para consulta de CEP
-    apis = [
-        {
-            'name': 'ViaCEP',
-            'url': 'https://viacep.com.br/ws/{}/json/',
-            'timeout': 10
-        },
-        {
-            'name': 'PostalPinCode',
-            'url': 'https://api.postalpincode.in/pincode/{}',
-            'timeout': 10
-        },
-        {
-            'name': 'CEP.la',
-            'url': 'https://cep.la/{}',
-            'timeout': 10
-        }
-    ]
 
     def __init__(self):
         """Inicializa o CepTracker com GeoTracker opcional"""
@@ -121,9 +103,9 @@ class CepTracker(object):
         """Consultar ViaCEP"""
         clean_cep = cep.replace('-', '').replace('.', '')
         url = 'https://viacep.com.br/ws/{}/json/'.format(clean_cep)
-        
+
         logger.info("Tentando ViaCEP: %s", url)
-        
+
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         return response.json()
@@ -151,32 +133,6 @@ class CepTracker(object):
             'ibge': ''
         }
 
-    def _request_cepaberto(self, cep):
-        """Consultar CEP Aberto como alternativa"""
-        clean_cep = cep.replace('-', '').replace('.', '')
-        url = 'https://www.cepaberto.com/api/v3/cep?cep={}'.format(clean_cep)
-        
-        logger.info("Tentando CEP Aberto: %s", url)
-        
-        headers = {
-            'Authorization': 'Token token=',  # Precisaria de token
-            'User-Agent': 'Postmon/1.0'
-        }
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        # Converter formato CEP Aberto para ViaCEP
-        return {
-            'cep': data.get('cep', ''),
-            'logradouro': data.get('address', ''),
-            'complemento': '',
-            'bairro': data.get('district', ''),
-            'localidade': data.get('city', {}).get('name', ''),
-            'uf': data.get('state', {}).get('code', ''),
-        }
-
     def _request(self, cep):
         clean_cep = cep.replace('-', '').replace('.', '')
 
@@ -189,7 +145,6 @@ class CepTracker(object):
         methods = [
             ('BrasilAPI', self._request_brasilapi),
             ('ViaCEP', self._request_viacep),
-            # ('CEPAberto', self._request_cepaberto),  # Desabilitado - precisa token
         ]
 
         last_error = None
@@ -286,7 +241,7 @@ class CepTracker(object):
                     _notfound_key: True,
                 },
             }]
-        
+
         result = []
         now = datetime.now()
 

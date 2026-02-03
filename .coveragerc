@@ -1,8 +1,7 @@
 [report]
 omit =
     */python?.?/*
-    */site-packages/nose/*
-    */packtrack/*
+    */site-packages/*
     */bottle.py
     */bottle/*
     */test/*
