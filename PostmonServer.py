@@ -240,8 +240,20 @@ if SENTRY_DSN:
 
 
 def _standalone(port=9876):
+    """Inicia o servidor em modo desenvolvimento (WSGIRefServer)."""
     run(app=app, host='0.0.0.0', port=port)
 
 
+def _production(host='0.0.0.0', port=9876):
+    """Inicia o servidor em modo produção (Waitress)."""
+    from waitress import serve
+    logger.info("Iniciando servidor Waitress em %s:%s", host, port)
+    serve(app, host=host, port=port, threads=4)
+
+
 if __name__ == "__main__":
-    _standalone()
+    import sys
+    if '--dev' in sys.argv:
+        _standalone()
+    else:
+        _production()

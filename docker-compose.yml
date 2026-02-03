@@ -24,6 +24,12 @@ services:
         depends_on:
             mongodb:
                 condition: service_healthy
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:9876/__health__"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 10s
         environment:
             - POSTMON_DB_HOST=mongodb
             - POSTMON_DB_PORT=27017

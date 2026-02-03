@@ -4,6 +4,7 @@ FROM python:3.11-slim-bookworm
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    curl \
     libz-dev \
     libxml2-dev \
     libxslt1-dev \
