@@ -1,37 +1,217 @@
 {
-    "openapi" : "3.0.2",
-    "info" : {
-        "title" : "Postmon",
-        "description" : "Uma API para consultar CEP",
-        "version" : "1.0.0"
+    "openapi": "3.0.2",
+    "info": {
+        "title": "Postmon",
+        "description": "API para consulta de CEP brasileiro com informações de endereço, dados do IBGE e coordenadas geográficas.",
+        "version": "2.0.0",
+        "contact": {
+            "name": "Postmon",
+            "url": "https://github.com/PostmonAPI/postmon"
+        }
     },
-    "servers" : [ {
-        "url" : "https://api.postmon.com.br/v1/"
-    } ],
-    "paths" : {
-        "/cep" : {
-            "get" : {
-                "summary" : "Retorna os dados do endereço para o CEP passado",
-                "description" : "Retorna os dados do endereço para o CEP passado. CEP deve ser enviado no formato de 8 dígitos.",
-                "operationId" : "getCEPData",
-                "parameters" : [ {
-                    "name" : "cep",
-                    "in" : "path",
-                    "description" : "Valor do CEP com apenas os 8 digitos.",
-                    "required" : true,
-                    "style" : "simple",
-                    "explode" : false,
-                    "schema" : {
-                        "type" : "string"
+    "servers": [
+        {
+            "url": "https://api.postmon.com.br/v1",
+            "description": "Servidor de produção"
+        }
+    ],
+    "paths": {
+        "/cep/{cep}": {
+            "get": {
+                "summary": "Consulta CEP",
+                "description": "Retorna os dados do endereço para o CEP informado, incluindo informações do estado e cidade (IBGE) e coordenadas geográficas quando disponíveis.",
+                "operationId": "getCep",
+                "tags": ["CEP"],
+                "parameters": [
+                    {
+                        "name": "cep",
+                        "in": "path",
+                        "description": "CEP com 8 dígitos (com ou sem hífen)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[0-9]{5}-?[0-9]{3}$",
+                            "example": "01310100"
+                        }
+                    },
+                    {
+                        "name": "format",
+                        "in": "query",
+                        "description": "Formato de resposta",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": ["json", "xml", "jsonp"],
+                            "default": "json"
+                        }
+                    },
+                    {
+                        "name": "callback",
+                        "in": "query",
+                        "description": "Nome da função callback para JSONP",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        }
                     }
-                } ],
-                "responses" : {
-                    "200" : {
-                        "description" : "encontrado",
-                        "content" : {
-                            "application/json" : {
-                                "schema" : {
-                                    "$ref" : "#/components/schemas/CEPResponse"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CEP encontrado",
+                        "headers": {
+                            "Cache-Control": {
+                                "description": "Política de cache",
+                                "schema": {
+                                    "type": "string",
+                                    "example": "public, max-age=2592000"
+                                }
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CEPResponse"
+                                }
+                            },
+                            "application/xml": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CEPResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "CEP não encontrado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Serviço temporariamente indisponível",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/uf/{sigla}": {
+            "get": {
+                "summary": "Consulta estado (UF)",
+                "description": "Retorna informações do estado brasileiro pela sigla.",
+                "operationId": "getUf",
+                "tags": ["IBGE"],
+                "parameters": [
+                    {
+                        "name": "sigla",
+                        "in": "path",
+                        "description": "Sigla do estado (2 letras)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 2,
+                            "example": "SP"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Estado encontrado",
+                        "headers": {
+                            "Cache-Control": {
+                                "description": "Política de cache",
+                                "schema": {
+                                    "type": "string",
+                                    "example": "public, max-age=2592000"
+                                }
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EstadoInfo"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Estado não encontrado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/cidade/{sigla_uf}/{nome}": {
+            "get": {
+                "summary": "Consulta cidade",
+                "description": "Retorna informações da cidade pelo estado e nome.",
+                "operationId": "getCidade",
+                "tags": ["IBGE"],
+                "parameters": [
+                    {
+                        "name": "sigla_uf",
+                        "in": "path",
+                        "description": "Sigla do estado (2 letras)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 2,
+                            "example": "SP"
+                        }
+                    },
+                    {
+                        "name": "nome",
+                        "in": "path",
+                        "description": "Nome da cidade (slug)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "sao-paulo"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cidade encontrada",
+                        "headers": {
+                            "Cache-Control": {
+                                "description": "Política de cache",
+                                "schema": {
+                                    "type": "string",
+                                    "example": "public, max-age=2592000"
+                                }
+                            }
+                        },
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CidadeInfo"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Cidade não encontrada",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
                                 }
                             }
                         }
@@ -40,66 +220,119 @@
             }
         }
     },
-    "components" : {
-        "schemas" : {
-            "CEPResponse" : {
-                "required" : [ "estado", "logradouro" ],
-                "type" : "object",
-                "properties" : {
-                    "estado" : {
-                        "type" : "string",
-                        "example" : "RJ"
+    "components": {
+        "schemas": {
+            "CEPResponse": {
+                "type": "object",
+                "required": ["cep", "estado", "cidade"],
+                "properties": {
+                    "cep": {
+                        "type": "string",
+                        "description": "CEP (8 dígitos, sem hífen)",
+                        "example": "01310100"
                     },
-                    "logradouro" : {
-                        "type" : "string",
-                        "example" : "Rua do Bispo"
+                    "logradouro": {
+                        "type": "string",
+                        "description": "Nome da rua/avenida",
+                        "example": "Avenida Paulista"
                     },
-                    "cidade" : {
-                        "type" : "string",
-                        "example" : "Rio de Janeiro"
+                    "complemento": {
+                        "type": "string",
+                        "description": "Complemento do endereço",
+                        "example": "de 1047 a 1865 - lado ímpar"
                     },
-                    "bairro" : {
-                        "type" : "string",
-                        "example" : "Tijuca"
+                    "bairro": {
+                        "type": "string",
+                        "description": "Nome do bairro",
+                        "example": "Bela Vista"
                     },
-                    "estadoInfo" : {
-                        "$ref" : "#/components/schemas/EstadoInfo"
+                    "cidade": {
+                        "type": "string",
+                        "description": "Nome da cidade",
+                        "example": "São Paulo"
                     },
-                    "cidadeInfo" : {
-                        "$ref" : "#/components/schemas/CidadeInfo"
+                    "estado": {
+                        "type": "string",
+                        "description": "Sigla do estado (UF)",
+                        "example": "SP"
+                    },
+                    "latitude": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Latitude (quando geocodificação está habilitada)",
+                        "example": -23.5614
+                    },
+                    "longitude": {
+                        "type": "number",
+                        "format": "double",
+                        "description": "Longitude (quando geocodificação está habilitada)",
+                        "example": -46.6558
+                    },
+                    "estado_info": {
+                        "$ref": "#/components/schemas/EstadoInfo"
+                    },
+                    "cidade_info": {
+                        "$ref": "#/components/schemas/CidadeInfo"
                     }
                 }
             },
-            "EstadoInfo" : {
-                "type" : "object",
-                "properties" : {
-                    "area_km2" : {
-                        "type" : "string",
-                        "example" : "43.781,566"
+            "EstadoInfo": {
+                "type": "object",
+                "description": "Informações do estado (IBGE)",
+                "properties": {
+                    "nome": {
+                        "type": "string",
+                        "description": "Nome completo do estado",
+                        "example": "São Paulo"
                     },
-                    "codigo_ibge" : {
-                        "type" : "string",
-                        "example" : "33"
+                    "codigo_ibge": {
+                        "type": "string",
+                        "description": "Código IBGE do estado",
+                        "example": "35"
                     },
-                    "nome" : {
-                        "type" : "string",
-                        "example" : "Rio de Janeiro"
+                    "area_km2": {
+                        "type": "string",
+                        "description": "Área em km²",
+                        "example": "248.219,481"
                     }
                 }
             },
-            "CidadeInfo" : {
-                "type" : "object",
-                "properties" : {
-                    "area_km2" : {
-                        "type" : "string",
-                        "example" : "1200,179"
+            "CidadeInfo": {
+                "type": "object",
+                "description": "Informações da cidade (IBGE)",
+                "properties": {
+                    "codigo_ibge": {
+                        "type": "string",
+                        "description": "Código IBGE da cidade",
+                        "example": "3550308"
                     },
-                    "codigo_ibge" : {
-                        "type" : "string",
-                        "example" : "3304557"
+                    "area_km2": {
+                        "type": "string",
+                        "description": "Área em km²",
+                        "example": "1.521,110"
+                    }
+                }
+            },
+            "Error": {
+                "type": "object",
+                "properties": {
+                    "error": {
+                        "type": "string",
+                        "description": "Mensagem de erro",
+                        "example": "CEP 00000000 nao encontrado"
                     }
                 }
             }
         }
-    }
+    },
+    "tags": [
+        {
+            "name": "CEP",
+            "description": "Consulta de CEP brasileiro"
+        },
+        {
+            "name": "IBGE",
+            "description": "Dados de estados e cidades do IBGE"
+        }
+    ]
 }
